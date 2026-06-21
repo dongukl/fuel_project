@@ -1,0 +1,13 @@
+package.xml
+setup.cfg
+setup.py
+fuel_port_perception/__init__.py
+fuel_port_perception/fuel_port_detector_node.py
+fuel_port_perception.egg-info/PKG-INFO
+fuel_port_perception.egg-info/SOURCES.txt
+fuel_port_perception.egg-info/dependency_links.txt
+fuel_port_perception.egg-info/entry_points.txt
+fuel_port_perception.egg-info/requires.txt
+fuel_port_perception.egg-info/top_level.txt
+fuel_port_perception.egg-info/zip-safe
+resource/fuel_port_perception
