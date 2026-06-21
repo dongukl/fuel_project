@@ -1,3 +1,0 @@
-[console_scripts]
-fuel_port_detection = fuel_port_perception.fuel_port_detector_node:main
-
