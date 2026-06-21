@@ -4,3 +4,5 @@
 2. 사용된 로봇 암의 레포지토리는 다음과 같다
  - https://github.com/ahnisinc/rokey7.git
 3. 주유 노즐, 주유소, NVIDIA Sim 모델, Universe의 차량 주유구 데이터셋이 사용된다.
+
+* Notion Doc Page : https://app.notion.com/p/515a6635480f83b89b6c01e30aced224
