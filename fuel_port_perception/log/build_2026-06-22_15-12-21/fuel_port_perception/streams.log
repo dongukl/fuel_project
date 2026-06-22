@@ -1,0 +1,37 @@
+[0.243s] Invoking command in '/home/rokey/Desktop/rokey_F4/src/fuel_port_perception': PYTHONPATH=/home/rokey/Desktop/rokey_F4/build/fuel_port_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/fuel_port_perception build --build-base /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build install --record /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/install.log --single-version-externally-managed install_data
+[0.334s] running egg_info
+[0.335s] creating ../../build/fuel_port_perception/fuel_port_perception.egg-info
+[0.335s] writing ../../build/fuel_port_perception/fuel_port_perception.egg-info/PKG-INFO
+[0.335s] writing dependency_links to ../../build/fuel_port_perception/fuel_port_perception.egg-info/dependency_links.txt
+[0.335s] writing entry points to ../../build/fuel_port_perception/fuel_port_perception.egg-info/entry_points.txt
+[0.335s] writing requirements to ../../build/fuel_port_perception/fuel_port_perception.egg-info/requires.txt
+[0.335s] writing top-level names to ../../build/fuel_port_perception/fuel_port_perception.egg-info/top_level.txt
+[0.335s] writing manifest file '../../build/fuel_port_perception/fuel_port_perception.egg-info/SOURCES.txt'
+[0.335s] reading manifest file '../../build/fuel_port_perception/fuel_port_perception.egg-info/SOURCES.txt'
+[0.336s] writing manifest file '../../build/fuel_port_perception/fuel_port_perception.egg-info/SOURCES.txt'
+[0.336s] running build
+[0.336s] running build_py
+[0.336s] creating /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build
+[0.336s] creating /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib
+[0.336s] creating /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib/fuel_port_perception
+[0.336s] copying fuel_port_perception/fuel_port_detector_node.py -> /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib/fuel_port_perception
+[0.336s] copying fuel_port_perception/__init__.py -> /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib/fuel_port_perception
+[0.336s] running install
+[0.336s] running install_lib
+[0.336s] creating /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception
+[0.336s] copying /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib/fuel_port_perception/fuel_port_detector_node.py -> /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception
+[0.337s] copying /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build/lib/fuel_port_perception/__init__.py -> /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception
+[0.337s] byte-compiling /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception/fuel_port_detector_node.py to fuel_port_detector_node.cpython-310.pyc
+[0.338s] byte-compiling /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception/__init__.py to __init__.cpython-310.pyc
+[0.338s] running install_data
+[0.339s] creating /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/share/ament_index
+[0.339s] creating /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/share/ament_index/resource_index
+[0.339s] creating /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/share/ament_index/resource_index/packages
+[0.339s] copying resource/fuel_port_perception -> /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/share/ament_index/resource_index/packages
+[0.339s] copying package.xml -> /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/share/fuel_port_perception
+[0.339s] running install_egg_info
+[0.339s] Copying ../../build/fuel_port_perception/fuel_port_perception.egg-info to /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages/fuel_port_perception-0.0.0-py3.10.egg-info
+[0.340s] running install_scripts
+[0.349s] Installing fuel_port_detector script to /home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/fuel_port_perception
+[0.349s] writing list of installed files to '/home/rokey/Desktop/rokey_F4/build/fuel_port_perception/install.log'
+[0.359s] Invoked command in '/home/rokey/Desktop/rokey_F4/src/fuel_port_perception' returned '0': PYTHONPATH=/home/rokey/Desktop/rokey_F4/build/fuel_port_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/rokey/Desktop/rokey_F4/install/fuel_port_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/fuel_port_perception build --build-base /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/build install --record /home/rokey/Desktop/rokey_F4/build/fuel_port_perception/install.log --single-version-externally-managed install_data
