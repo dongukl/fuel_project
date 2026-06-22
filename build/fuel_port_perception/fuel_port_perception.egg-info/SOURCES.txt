@@ -9,6 +9,7 @@ setup.py
 ../../../build/fuel_port_perception/fuel_port_perception.egg-info/top_level.txt
 ../../../build/fuel_port_perception/fuel_port_perception.egg-info/zip-safe
 fuel_port_perception/__init__.py
+fuel_port_perception/fuel_parts_color_detector_node_v1.py
 fuel_port_perception/fuel_port_detector_node.py
 resource/fuel_port_perception
 test/test_copyright.py
