@@ -3,6 +3,7 @@ setup.cfg
 setup.py
 fuel_port_perception/__init__.py
 fuel_port_perception/fuel_port_detector_node.py
+fuel_port_perception/fuel_port_detector_node_v2.py
 fuel_port_perception.egg-info/PKG-INFO
 fuel_port_perception.egg-info/SOURCES.txt
 fuel_port_perception.egg-info/dependency_links.txt
