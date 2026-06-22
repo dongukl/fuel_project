@@ -24,8 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'fuel_port_detector_node = fuel_port_perception.fuel_port_detector_node:main',
-            'fuel_port_detector_v2 = fuel_port_perception.fuel_port_detector_node_v2:main',
+            'fuel_port_detector = fuel_port_perception.fuel_port_detector_node:main',
         ],
     },
 )
