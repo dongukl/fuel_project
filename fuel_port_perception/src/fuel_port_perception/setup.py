@@ -24,8 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'fuel_port_detector = fuel_port_perception.fuel_port_detector_node:main',
-            'multi_color_detector = fuel_port_perception.multi_color_detector:main',
+            'multi_detector = fuel_port_perception.multi_color_detector:main',
         ],
     },
 )

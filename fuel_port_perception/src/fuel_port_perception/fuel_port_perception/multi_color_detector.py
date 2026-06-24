@@ -112,7 +112,7 @@ class MultiColorDetectorNode(Node):
         # 기존 [100,150,50]~[130,255,255]는 Saturation 하한(150)이 너무 높아 밝은 파란색을
         # 탈락시킬 수 있어 낮추고, Hue 범위도 90~140으로 넓혀서 재질/조명에 따른 색조 편차를 더 허용함.
         # 실제 마개 색을 rqt/debug_image로 확인한 뒤 필요하면 이 값을 더 좁혀 정밀도를 올릴 것.
-        self.declare_parameter("blue_low", [90, 80, 50])
+        self.declare_parameter("blue_low", [90, 80, 200])
         self.declare_parameter("blue_high", [140, 255, 255])
         self.declare_parameter("green_low", [35, 80, 60])
         self.declare_parameter("green_high", [90, 255, 255])
