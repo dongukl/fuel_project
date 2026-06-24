@@ -1,0 +1,20 @@
+[0.232s] Invoking command in '/home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception': PYTHONPATH=/home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/build --no-deps symlink_data --force
+[0.332s] running develop
+[0.384s] running egg_info
+[0.385s] writing fuel_port_perception.egg-info/PKG-INFO
+[0.385s] writing dependency_links to fuel_port_perception.egg-info/dependency_links.txt
+[0.385s] writing entry points to fuel_port_perception.egg-info/entry_points.txt
+[0.385s] writing requirements to fuel_port_perception.egg-info/requires.txt
+[0.385s] writing top-level names to fuel_port_perception.egg-info/top_level.txt
+[0.386s] reading manifest file 'fuel_port_perception.egg-info/SOURCES.txt'
+[0.386s] writing manifest file 'fuel_port_perception.egg-info/SOURCES.txt'
+[0.386s] running build_ext
+[0.386s] Creating /home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/lib/python3.10/site-packages/fuel-port-perception.egg-link (link to .)
+[0.387s] Installing aruco_marker script to /home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/lib/fuel_port_perception
+[0.387s] Installing multi_detector script to /home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/lib/fuel_port_perception
+[0.387s] 
+[0.387s] Installed /home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception
+[0.387s] running symlink_data
+[0.387s] symbolically linking /home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/resource/fuel_port_perception -> /home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/share/ament_index/resource_index/packages
+[0.387s] symbolically linking /home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/package.xml -> /home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/share/fuel_port_perception
+[0.401s] Invoked command in '/home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception' returned '0': PYTHONPATH=/home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/rokey/Desktop/rokey_F4/fuel_port_perception/install/fuel_port_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/rokey/Desktop/rokey_F4/fuel_port_perception/build/fuel_port_perception/build --no-deps symlink_data --force

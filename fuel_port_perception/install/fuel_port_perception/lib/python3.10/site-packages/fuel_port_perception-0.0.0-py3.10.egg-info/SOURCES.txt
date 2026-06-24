@@ -9,6 +9,7 @@ setup.py
 ../../build/fuel_port_perception/fuel_port_perception.egg-info/top_level.txt
 ../../build/fuel_port_perception/fuel_port_perception.egg-info/zip-safe
 fuel_port_perception/__init__.py
+fuel_port_perception/aruco_marker_detector_visual_test.py
 fuel_port_perception/multi_color_detector.py
 resource/fuel_port_perception
 test/test_copyright.py
