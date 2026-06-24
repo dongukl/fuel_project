@@ -1,0 +1,64 @@
+==========================================
+multi_robot_oiling.py 트러블슈팅 정리
+==========================================
+
+[1] 마개 접근/복귀 경로에서 열린 덮개를 뚫고 지나가는 문제
+
+원인: B 로봇이 마개(fuel_cap)로 갈 때 거치는 회피 경유점(B5_00_avoid_door)이 벽에서
+     충분히 떨어져 있지 않았고, 마개 작업을 마치고 덮개를 닫으러 복귀하는 경로에는
+     회피 경유점 자체가 없어 곧장 열린 덮개 쪽으로 이동했음.
+
+결과: 로봇 손(EE)이 이동 중 열려 있는 덮개(fuel_door) 모델을 뚫고 지나가는 비정상적인
+     움직임이 반복적으로 발생함.
+
+해결방법:
+ - COVER_CLEARANCE_DISTANCE를 0.35 -> 0.55로 늘려 회피 경유점을 로봇 쪽(벽 바깥쪽)으로 더 당김
+ - build_close_cover_sequence()에 avoid_point 파라미터를 추가, 복귀 경로 맨 앞에
+   B10_00_avoid_door 단계를 끼워 넣어 복귀할 때도 같은 회피 지점을 먼저 거치게 함
+ - 호출부(RESTORE_CAP.retreat -> CLOSE_COVER 전환)에서 locked_cap_center 기준으로
+   avoid_point를 계산해 전달
+
+
+[2] kinematicEnabled 강제 변경 코드
+
+원인: _setup_door_drive()에서 fuel_door RevoluteJoint의 body0/body1 RigidBody가
+     kinematicEnabled=True인지 매번 검사하고, True면 코드에서 강제로 False로 바꾸는
+     진단/보정 로직이 들어 있었음 (USD 쪽 값이 아직 제대로 설정되지 않았을 때를 대비한 임시 코드).
+
+결과: USD 씬에 이미 올바른 kinematicEnabled 값을 직접 설정해 둔 뒤에는, 이 코드가
+     불필요하게 같은 작업을 매번 반복하며 진단 로그만 찍는 중복을 유발함.
+
+해결방법: _setup_door_drive() 안의 kinematicEnabled 검사 및 강제 변경 블록을 완전히 삭제.
+         (joint lower/upper limit 자동 보정 로직은 별도 요청 전까지 그대로 유지)
+
+
+[3] 덮개 자동 열기 로직과 USD 설정 중복
+
+원인: post_reset()에서 Play 시작/리셋마다 lock_cover_open()으로 DriveAPI targetPosition을
+     30도 -> 90도로 코드가 직접 구동해 덮개를 열도록 되어 있었는데, 이후 USD 씬 자체에
+     덮개가 자동으로 열린 상태로 시작하도록 별도 설정함.
+
+결과: 코드와 씬 설정이 같은 동작(덮개 열기)을 이중으로 시도하는 중복 상태가 됨.
+
+해결방법: post_reset()에서 lock_cover_open() 호출 및 관련 진단 출력 블록을 제거.
+         그리퍼 초기화와 door_rest_rotation 캐싱만 남김.
+         (door_rest_rotation은 디버그 로그용 current_door_angle_deg()에만 쓰이고
+          실제 로봇 제어 흐름에는 영향이 없음을 확인함)
+
+
+[4] 덮개가 30도까지만 닫히고 완전히(0도) 닫히지 않는 문제
+
+원인: build_close_cover_sequence()가 90 -> 60 -> 30도(COVER_START_DEG)까지만 단계를
+     정의하고 있어서, 닫는 동작이 30도에서 끝나도록 설계되어 있었음.
+
+결과: 덮개가 완전히 닫히지 않고 30도 정도 열린 상태로 멈춤.
+
+해결방법:
+ - COVER_FULL_CLOSE_DEG(0.0), DOOR_FULL_CLOSE_RETREAT_DISTANCE(0.15m) 상수 추가
+ - build_close_cover_sequence()에 center_reference_point 인자를 추가하고,
+   B10_04_retreat(빠져나오기) -> B10_05_center_align(중앙 정렬) ->
+   B10_06_full_close_push(중앙 기준 0도까지 직선으로 밀기) 3단계를 추가
+ - target_door_angle은 B10_06 단계에만 설정해, 후퇴/정렬 중에는 문이 30도에서 멈춰
+   있다가 마지막 push 단계에서만 30 -> 0도로 시각적으로 보간되도록 함
+ - 후퇴 거리(0.15m)는 추정값이므로 실제 시뮬레이션에서 확인 후 조정 필요
+==========================================
