@@ -7,7 +7,7 @@ Isaac Sim Script Editor에서 실행한다 (텍스처 파일 불필요, Cube geo
 
 배경
 - world.usda의 /World/aruco_vehicle_marker가 카메라 기준 좌우 반전(mirror)되어 보여서
-  aruco_marker_detector_visual_test.py가 마커를 검출하지 못했다.
+  aruco_marker_detector.py가 마커를 검출하지 못했다.
 - ArUco 디코더는 회전(0/90/180/270)은 보정하지만 좌우 반전은 보정하지 않으므로,
   거울상으로 보이는 패턴은 DICT_4X4_50의 어떤 유효 id와도 맞지 않아 그냥 버려진다.
 - 카메라가 보는 면을 바꿀 수 없으므로, "거울상의 거울상 = 원본"이 되도록
