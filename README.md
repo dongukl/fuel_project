@@ -18,56 +18,8 @@ Isaac Sim과 ROS2를 기반으로 한 **자동 주유 로봇 팔 시뮬레이션
 
 ### 1.1 시스템 구성도
 
-```mermaid
-flowchart LR
-    User[사용자 / 관리자] -->|시뮬레이션 실행| Isaac[Isaac Sim Simulation]
+<img width="1672" height="941" alt="ChatGPT Image Jun 24, 2026, 04_08_23 PM" src="https://github.com/user-attachments/assets/5e62505f-42bc-490c-9c4e-04dbc16eae46" />
 
-    subgraph IsaacSim[Isaac Sim Environment]
-        USD[Gas Station / Vehicle / Fuel Port USD]
-        Camera[Wall Camera / RGB Camera]
-        RobotA[Robot A - Nozzle Insertion]
-        RobotB[Robot B - Cap & Door Handling]
-        RMPFlow[RMPFlow Motion Controller]
-    end
-
-    subgraph ROS2[ROS2 Communication Layer]
-        RGB[/rgb/]
-        CameraInfo[/camera_info/]
-        Mode[/color_detector/mode_switch/]
-        Pose[/color_detector/pose/]
-        Lock[/color_detector/target_locked/]
-        ADone[/robot_a/done/]
-        BDone[/robot_b/done/]
-    end
-
-    subgraph Perception[Perception Node]
-        Aruco[Aruco Marker Detector]
-    end
-
-    Isaac --> USD
-    Camera --> RGB
-    Camera --> CameraInfo
-
-    RGB --> Aruco
-    CameraInfo --> Aruco
-    Mode --> Aruco
-
-    Aruco --> Pose
-    Aruco --> Lock
-
-    Pose --> Isaac
-    Lock --> Isaac
-
-    Isaac --> RMPFlow
-    RMPFlow --> RobotA
-    RMPFlow --> RobotB
-
-    RobotB --> BDone
-    BDone --> RobotA
-
-    RobotA --> ADone
-    ADone --> RobotB
-```
 
 ### 1.2 주요 모듈 역할
 
@@ -84,44 +36,8 @@ flowchart LR
 
 ### 1.3 전체 동작 플로우
 
-```mermaid
-flowchart TD
-    Start([Simulation Start]) --> LoadUSD[USD Scene Load]
-    LoadUSD --> InitRobot[Robot A/B Initialize]
-    InitRobot --> StartROS[ROS2 Bridge Node Start]
-    StartROS --> BStart[Robot B: mode_switch = blue]
+<img width="2720" height="3440" alt="fueling_flowchart_v4" src="https://github.com/user-attachments/assets/b00b98ae-1d8a-45e4-8955-00fdb80380c1" />
 
-    BStart --> DetectCap[Detect Fuel Cap Pose]
-    DetectCap --> CapLock{Target Locked?}
-    CapLock -- Yes --> BApproach[Robot B Approach Fuel Cap]
-    CapLock -- Timeout --> BFallback[Use Fallback Cap Position]
-    BFallback --> BApproach
-
-    BApproach --> GripCap[Close Gripper]
-    GripCap --> Unscrew[Rotate Joint 6 - Unscrew Cap]
-    Unscrew --> ExtractCap[Extract Cap]
-    ExtractCap --> BHome[Robot B Return Home with Cap]
-    BHome --> BDone[Publish /robot_b/done]
-
-    BDone --> AStart[Robot A: mode_switch = green]
-    AStart --> DetectPort[Detect Fuel Port Pose]
-    DetectPort --> PortLock{Target Locked?}
-    PortLock -- Yes --> AApproach[Robot A Approach Fuel Port]
-    PortLock -- Timeout --> AFallback[Use Fallback Fuel Port Position]
-    AFallback --> AApproach
-
-    AApproach --> InsertNozzle[Insert Nozzle]
-    InsertNozzle --> RetreatNozzle[Retreat Nozzle]
-    RetreatNozzle --> AHome[Robot A Return Home]
-    AHome --> ADone[Publish /robot_a/done]
-
-    ADone --> RestoreCap[Robot B Restore Cap]
-    RestoreCap --> ScrewCap[Rotate Joint 6 - Screw Cap]
-    ScrewCap --> OpenGripper[Open Gripper]
-    OpenGripper --> CloseDoor[Close Fuel Door]
-    CloseDoor --> FinalHome[Robot B Return Home]
-    FinalHome --> End([Simulation Complete])
-```
 
 ---
 
