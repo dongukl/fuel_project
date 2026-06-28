@@ -1,0 +1,214 @@
+=================================================================
+2026-06-25 작업 정리 (multi_robot_oiling.py / fuel_port_perception)
+=================================================================
+
+[1] 문 열림 타이밍 / 마개 오프셋 / 문 닫기 위치 소스 수정
+-----------------------------------------------------------------
+- 문제: 덮개가 다 열리기도 전에 로봇이 움직임. 마개를 열고 닫을 때 정확한 위치를
+  못 잡음. 문을 닫을 때 하드코딩된 위치를 그대로 사용.
+- 조치:
+  - 덮개가 다 열린 뒤에만 다음 동작이 시작되도록 게이트 추가
+  - CAP_POSITION_OFFSET (x,y,z) 오프셋 상수 추가, 최종적으로 z=-0.01로 확정
+    (사용자 확인: "-0.01 딱 맞네")
+  - 문 닫을 때 위치를 하드코딩 값이 아니라 ArUco 카메라로 측정한 위치
+    (locked_door_center)를 쓰도록 변경
+
+[트러블슈팅] 문 열림 감지 방법 변경
+-----------------------------------------------------------------
+- 시도 1: 도어 각도(current_door_angle_deg())가 정체(settle)되는 것을 감지해서
+  "다 열렸다"고 판단하려 했음.
+- 문제 발견: 이 씬에서 current_door_angle_deg()가 비정상적인 값(예: -141.8도)을
+  반환함 (RevoluteJoint axis-angle 표현이 wrap되는 문제로 추정). 각도 기반 정체
+  감지가 오작동하여 신뢰 불가.
+- 해결: 각도 측정을 포기하고, DOOR_OPEN_FIXED_WAIT_SECONDS(5초) 고정 대기 후
+  "다 열렸다"고 가정하는 방식으로 전환. 이후 ArUco door lock으로 실제 위치를
+  한 번 더 확정.
+
+[트러블슈팅] 문 닫기 애니메이션이 0도로 바로 스냅되는 회귀 버그
+-----------------------------------------------------------------
+- 원인: 위치 소스를 ArUco 측정값으로 바꾸는 작업을 하면서, build_close_cover_sequence()에
+  reference_angle_deg라는 파라미터를 잘못 추가하고 "동적으로 측정한 열림 각도"를
+  애니메이션 시작점으로 쓰도록 구조를 바꿔버림. 그런데 측정값(locked_door_angle_deg)
+  자체가 부정확해서 애니메이션이 120→75→30→0도로 보간되지 못하고 바로 0도로 튐.
+- 사용자 피드백: "위치값만 aruco마커에서 받아서 쓰는것이었는데 시뮬레이션 자체가
+  바뀌면 안되지" → 위치 소스만 바꾸고 애니메이션/시뮬레이션 로직 자체는 건드리지
+  말아야 한다는 원칙 확인.
+- 해결: build_close_cover_sequence()를 원래 시그니처(reference_angle_deg 파라미터
+  제거)로 완전히 되돌리고, COVER_START_DEG/COVER_OPEN_DEG 리터럴 상수를 그대로 사용.
+  위치 소스(door_reference_point/center_reference_point)만 locked_door_center로 교체.
+
+[트러블슈팅] ArUco lock 게이트가 계속 거부됨 ([LOCK REJECT] outside gate)
+-----------------------------------------------------------------
+- 원인: marker_to_door_xyz 오프셋이 world.usda에 저장된 "닫힘(rest pose) 상태"의
+  fuel_door 좌표를 기준으로 계산되어 있어서, 카메라로 아무리 다시 측정해도 항상
+  "문이 닫혀 있었다면 여기"라는 닫힘 등가 좌표가 나옴 (회전을 전혀 반영하지 못함).
+  그런데 게이트 기준값(gate reference)은 "열린 상태"로 90도 회전시킨 추정값을
+  쓰고 있어서, 카메라 측정값(닫힘 등가)과 게이트 기준(열림 추정)이 구조적으로
+  어긋나 있었음. 어떤 허용오차(tolerance)를 줘도 해결 불가능한 근본 원인.
+- 해결: _expected_door_open_position() 같은 "열림 상태로 회전시키는" 헬퍼를 완전히
+  제거. 게이트 기준값과 폴백값 모두 task.door_world_position(닫힘 등가 좌표)을
+  그대로 사용하도록 수정 — 카메라가 실제로 측정하는 값과 같은 기준으로 비교하게 함.
+
+[트러블슈팅] 덮개 자동 열기 속도가 항상 10으로 덮어써짐
+-----------------------------------------------------------------
+- 원인: on_play_reset()이 매번 DOOR_AUTO_OPEN_DRIVE_VELOCITY(하드코딩 상수=10)로
+  속도를 복원했음. USD 씬에서 속도를 50으로 바꿔도 Play를 누를 때마다 코드가
+  10으로 되돌려버림.
+- 해결: _setup_door_drive()에서 USD에 실제 설정된 targetVelocity 값을 읽어서
+  task.door_open_drive_velocity_from_usd에 캐싱. on_play_reset()은 이 캐시된
+  값을 복원하도록 변경 (코드 상수는 캐시 실패 시의 폴백으로만 사용).
+
+
+[2] 차량 슬라이드-인 시뮬레이션 추가
+-----------------------------------------------------------------
+- 요청: x축 +10m 지점에서 시작해 실제 주차 위치까지 차가 들어오는 시뮬레이션 추가.
+  바퀴는 안 움직여도 됨. 매번 같은 자리가 아니라 x,y축 ±0.2m 오차를 두고 랜덤하게
+  주차되도록 해서 일반화 테스트 가능하게.
+- 사전 조사:
+  - ss.usda에서 사용자가 car_visual + aruco_vehicle_marker를 /World/car라는 Xform
+    부모로 묶어둔 것을 확인 — 이 prim 하나만 옮기면 차체+마커가 항상 같이 움직임
+    (마커를 "스티커처럼" 붙이는 효과).
+  - 기존에 문 회전에 쓰던 set_prim_world_matrix() 패턴을 그대로 재사용 가능함을 확인.
+  - SEARCH_GATE_HALF_EXTENT(x/y=0.35m)가 ±0.2m 주차 오차를 충분히 허용한다는 것을
+    확인 (ArUco lock 게이트가 깨지지 않음).
+  - _discover_fuel_objects()가 차가 도착하기 전(authored 위치)에 한 번 호출되지만,
+    이 값은 게이트 기준/타임아웃 폴백용일 뿐 실제 로봇 타겟은 항상 라이브 ArUco
+    측정값을 쓰므로 재호출 불필요하다고 판단.
+- 구현 (multi_robot_oiling.py):
+  - 상수 추가: CAR_ROOT_PRIM_NAME, CAR_ARRIVAL_START_OFFSET(+10m, x축),
+    CAR_ARRIVAL_SPEED_MPS(2m/s), CAR_ARRIVAL_TOLERANCE_M, CAR_PARK_XY_NOISE_M(0.2m)
+  - CarArrivalController 클래스 신설: 매 Play마다 주차 위치에 ±0.2m 랜덤 오차를
+    새로 뽑고, 차를 (목표+10m) 지점에서 목표 지점까지 직선 kinematic 이동시킴.
+  - main() 메인 루프에서 car_controller가 끝날 때까지 runner_a/runner_b.tick()을
+    호출하지 않고 car_controller.tick()만 실행 — 기존 A/B 로봇 상태머신은 전혀
+    수정하지 않고 "시작 시점만 늦추는" 방식으로 통합.
+
+
+[3] 디버그 마커 자동 숨김
+-----------------------------------------------------------------
+- 요청: 문/마개/구멍 위치에 디버깅용으로 띄워둔 작은 색깔 박스(fuel_marker_door/
+  cap/hole)가 시뮬레이션 시작하면 안 보이게.
+- 구현: task.hide_debug_markers() 메서드 추가, Play를 누르는 시점(on_play_reset
+  직후)에 호출해서 3개 박스를 모두 숨김. Play 전(씬 확인용)에는 그대로 보임.
+
+
+[4] Git: Donguk_Lim 브랜치 병합
+-----------------------------------------------------------------
+- 요청: Donguk_Lim 브랜치 내용을 pull해서 최신으로 업데이트.
+- 충돌 파일: fuel_port_perception/setup.py (entry_points 병합),
+  aruco_detector_params_visual_test.yaml, aruco_marker_detector_visual_test.py
+  (둘 다 Donguk_Lim 병합 버전 유지하기로 결정).
+- Donguk_Lim 브랜치 쪽 변경사항 중 발견된 의심스러운 부분(미해결, 사용자에게 보고만 함):
+  marker_to_cap_xyz와 marker_to_hole_xyz 값이 완전히 동일함 — 마개와 주유구는
+  물리적으로 다른 깊이에 있어야 하므로 캘리브레이션 누락/버그 가능성 있음.
+
+
+[5] ArUco 네이밍 전면 정리 (yellow/blue/green → door/cap/hole)
+-----------------------------------------------------------------
+- 문제: mode_switch 값이 색상 이름(yellow/blue/green)을 그대로 쓰고 있었고,
+  토픽 이름도 옛 색상 기반 detector 시절의 /color_detector/*를 그대로 사용 중.
+  ArUco 기반으로 완전히 전환했는데 이름만 색상 detector 시절 그대로 남아있던 상태.
+- 변경 내용 (multi_robot_oiling.py, aruco_marker_detector.py, yaml, 문서 전체):
+  - 토픽: /color_detector/* → /aruco_detector/*
+  - 모드값: "yellow"→"door", "blue"→"cap", "green"→"hole"
+  - 내부 상태머신 이름도 동기화: WAIT_BLUE→WAIT_CAP, WAIT_LOCK_GREEN→WAIT_LOCK_HOLE
+  - VALID_MODES, target_offsets 딕셔너리 키, initial_mode 기본값 전부 갱신
+  - README_visual_test_aruco.md, visual_test_aruco_values.md 문서도 갱신
+    (문서 갱신 중 "door 모드는 marker lock을 안 쓴다"는 오래된 설명도 함께 정정)
+  - multi_color_detector.py(레거시 색상 detector)는 손대지 않음 — 더 이상 호환되진
+    않지만 별도 파일이라 그대로 둠.
+
+[정리] 미사용 코드 제거 (multi_robot_oiling.py)
+-----------------------------------------------------------------
+- pyflakes + 사용량(grep) 검사로 확인 후 제거:
+  - import Sdf (미사용)
+  - angle_deg_between() 함수 (어디서도 호출 안 됨)
+  - camera_ros_point_to_usd_camera_local() 함수 (자체 docstring에 "참고용으로만
+    남아있음"이라 적혀 있던 죽은 코드)
+  - CAMERA_POINT_CONVENTION 상수 (위 함수에서만 쓰임)
+  - FUEL_PORT_DIAMETER 상수 (참고용 치수, 실사용 없음)
+
+
+[6] 파일 리네임: aruco_marker_detector_visual_test.py → aruco_marker_detector.py
+-----------------------------------------------------------------
+- setup.py entry_points 정리: aruco_marker / aruco_marker_2 /
+  aruco_marker_detector_visual_test 3개를 aruco_marker_detector 하나로 통합.
+  (aruco_marker_2였던 create_aruco_marker_grid_visual_test.py는 원래 Isaac Sim
+  Script Editor 전용으로 ROS 노드가 아니라서, console_script 등록 자체가 안 맞았던
+  것을 이번에 같이 정리함.)
+
+[트러블슈팅] 리네임 후 옛 entry point가 남아서 에러
+-----------------------------------------------------------------
+- 증상: ros2 run fuel_port_perception aruco_marker_detector_visual_test 실행 시
+  StopIteration 에러.
+- 원인: setup.py에서 entry point 이름이 바뀌었는데, install/ 폴더에 이전 빌드가
+  생성해둔 옛 스크립트 파일(aruco_marker, aruco_marker_2,
+  aruco_marker_detector_visual_test)이 그대로 남아있었음. colcon build는 기존
+  install 파일을 자동으로 정리하지 않음.
+- 해결: fuel_port_perception/{build,install,log} 디렉터리를 rm -rf 후 깨끗하게
+  재빌드. 재확인 결과 aruco_marker_detector / multi_detector 2개만 남고 옛
+  스크립트는 모두 사라짐. 새 entry point(aruco_marker_detector) 정상 동작 확인
+  (ros2 run, 노드 생성, 토픽 발행까지 직접 실행해서 검증).
+- 문서/주석에 남아있던 옛 파일명(README_visual_test_aruco.md, multi_robot_oiling.py
+  주석, create_aruco_marker_grid_visual_test.py 주석)도 전부 새 이름으로 교체.
+
+
+[7] 로그 정리: 반복 출력 제거 + 주유 프로세스 서술로 재작성
+-----------------------------------------------------------------
+- 문제: PRINT_EVERY_N_STEPS(20스텝=0.33초)마다 진행 상태를 찍는 디버그 로그가
+  약 19곳에 있어서, 대기/이동 중에 콘솔이 계속 쏟아짐. 메시지 자체도 내부 변수명
+  위주(예: "[B][GRIP_UNSCREW.rotate] accumulated=42.3/360")라 주유 작업 흐름을
+  파악하기 어려움.
+- 조치:
+  1. 반복 로그 19곳 전부 제거 (PRINT_EVERY_N_STEPS 상수까지 함께 삭제) —
+     이제 상태가 바뀔 때만(전환 또는 문제) 로그가 출력됨.
+  2. 남은 전환/문제 로그를 "주유 작업이 어느 단계인지" 알 수 있는 문장으로 재작성.
+     좌표/각도 수치는 그대로 유지(사용자 명시 요청). 예:
+     - "[A-8] robot_b/done 수신 -> mode_switch=hole, 주유구 lock 대기 시작"
+       → "[A] B 작업 완료 확인 -> 주유구 위치 인식 시작 (mode=hole)"
+     - "[B-6] unscrew 360도 완료 -> 마개 빼는 중"
+       → "[B] 마개 풀기 완료(360도) -> 마개를 빼내는 중"
+     - 타임아웃/실패 케이스는 모두 [WARN]으로 통일하고 폴백 좌표값을 명시
+  3. 매 Play마다 무조건 찍히던 순수 진단성 로그(joint6_index, dof_names 등)는
+     제거하고, 실제 문제(인덱스를 못 찾음/이름 불일치)가 있을 때만 [WARN] 출력.
+- 검증: ast.parse + pyflakes 통과, 변수 스코프 한 줄씩 수동 대조 완료.
+  print() 총 개수 109 → 87.
+
+
+[8] 로그/네이밍 작업 중 발견한 별도 이슈: 파일 분기
+-----------------------------------------------------------------
+- 발견: cobot3_ws/isaacpjt/M0609/에 multi_robot_oiling.py와는 별도로
+  multi_robot_aruco_oiling.py라는 파일이 있었음. 확인해보니 이번 세션 중간
+  시점(DOOR_OPEN_FIXED_WAIT_SECONDS, CAP_POSITION_OFFSET 추가 직후)의
+  multi_robot_oiling.py를 복사해서, 사용자가 별도로 추가 튜닝한 파일이었음
+  (joint_5: -75→-85, COVER_START_DEG: 30→0, COVER_OPEN_DEG: 120→100,
+  DOOR_ANGLE_TOLERANCE_DEG: 8→4, CAP_POSITION_OFFSET: -0.01→-0.1).
+- 즉 이후 작업(WAIT_DOOR_OPEN 재구성, 문 닫기 ArUco 위치 사용, 도어 속도 USD값
+  사용, 차량 슬라이드-인, 로그 정리 등)은 모두 multi_robot_oiling.py에만 반영되어
+  있고 multi_robot_aruco_oiling.py에는 반영되지 않은 상태.
+- 처리 상태: 사용자에게 분기 사실을 보고함. 어느 파일을 "진짜" 작업 파일로 가져갈지
+  (multi_robot_aruco_oiling.py의 튜닝값을 multi_robot_oiling.py로 합칠지, 반대로
+  할지)는 아직 결정되지 않음 — 다음 작업 시 확인 필요.
+
+
+[9] Git: build/install/log 추적 제외 + Donguk_Lim 브랜치 동기화
+-----------------------------------------------------------------
+- 루트에 .gitignore 신설 (build/, install/, log/).
+- fuel_port_perception/{build,install,log}를 git 추적에서 제거
+  (git rm -r --cached, 디스크에는 그대로 둠 — 재빌드 결과물이라 삭제 안 함).
+- cobot3_ws의 build/install/log는 이미 디스크에서 삭제된 상태였고, origin/Donguk_Lim
+  쪽에서 이미 같은 작업(빌드 산출물 삭제 커밋 3개)이 먼저 올라와 있던 것을 발견 —
+  fetch 후 머지해서 두 작업이 충돌 없이 합쳐짐.
+- 오늘 세션의 모든 작업 내용을 커밋 후 origin/Donguk_Lim으로 push 완료
+  (origin/main은 건드리지 않음, 요청 범위 내에서만 처리).
+- push 후 git diff로 로컬 HEAD와 origin/Donguk_Lim이 완전히 동일함을 재확인.
+
+
+=================================================================
+다음에 확인이 필요한 항목
+=================================================================
+1. multi_robot_aruco_oiling.py와 multi_robot_oiling.py의 분기 정리
+   (어느 파일을 기준으로 합칠지 결정 필요)
+2. marker_to_cap_xyz == marker_to_hole_xyz (값 완전히 동일, 캘리브레이션 의심)
+3. [LOCK REJECT] 로그가 타임아웃 구간 동안 반복될 수 있음 — 필요하면 N번째마다만
+   찍도록 추가로 줄이는 것도 검토 가능 (이번엔 적용 안 함)
