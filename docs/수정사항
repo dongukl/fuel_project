@@ -71,4 +71,37 @@ DOOR_PUSH_OFFSET = 0.15
 kinematicEnabled=True 제거
 
 
+[실행법]
 
+  cd ~/Desktop/rokey_F4
+
+  # ROS2 워크스페이스 소스
+  source fuel_port_perception/install/setup.bash
+
+  # ArUco 디텍터 실행
+  ros2 run fuel_port_perception aruco_marker_detector \
+    --ros-args \
+    --params-file fuel_port_perception/install/fuel_port_perception/share/fuel_port_perception/config/ar
+  uco_detector_params_visual_test.yaml
+
+  ---
+  터미널 2 — Isaac Sim + 웹서버 (파이프로 동시 실행)
+
+  cd ~/Desktop/rokey_F4
+
+  # Isaac Sim stdout → server.py stdin 으로 파이프
+  isaac_python cobot3_ws/isaacpjt/M0609/multi_robot_oiling.py 2>&1 \
+    | python3 -m uvicorn server:app --host 0.0.0.0 --port 8000
+
+  ▎ isaac_python이 alias가 아닌 경우 실제 경로로 변경:
+  ▎ ~/.local/share/ov/pkg/isaac-sim-*/python.sh cobot3_ws/isaacpjt/M0609/multi_robot_oiling.py 2>&1 \
+  ▎   | python3 -m uvicorn server:app --host 0.0.0.0 --port 8000
+
+  ---
+  브라우저 — 웹 UI 열기
+
+  http://192.168.X.156:8000
+
+  ▎ receipt.html을 파일로 직접 열 필요 없음 — 서버가 직접 서빙합니다.
+
+ 
