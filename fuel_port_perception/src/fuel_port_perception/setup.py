@@ -1,3 +1,5 @@
+import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'fuel_port_perception'
@@ -10,6 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/config', glob.glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,7 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'multi_detector = fuel_port_perception.multi_color_detector:main',
-            'aruco_marker = fuel_port_perception.aruco_marker_detector_visual_test:main',
+            'aruco_marker_detector = fuel_port_perception.aruco_marker_detector:main',
         ],
     },
 )

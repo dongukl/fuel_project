@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoFuel — 자율주행 주유 서비스</title>
+<style>
+/* ── CSS 변수 ───────────────────────────────────────────────────────────── */
+:root {
+  --bg:           #0b0f1a;
+  --bg-card:      #111827;
+  --bg-card2:     #1a2235;
+  --border:       #1f2d45;
+  --accent:       #22d3a0;
+  --accent-dim:   #134d3b;
+  --text:         #e2e8f0;
+  --text-muted:   #64748b;
+  --text-label:   #94a3b8;
+  --warn-bg:      #2d2005;
+  --warn-border:  #d97706;
+  --warn-text:    #fbbf24;
+  --step-done:    #22d3a0;
+  --step-active:  #38bdf8;
+  --step-idle:    #1e2d45;
+  --receipt-bg:   #fafaf7;
+  --receipt-text: #1a1a1a;
+  --receipt-muted:#666;
+  --receipt-border:#c8c8c0;
+  --radius:       12px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "Courier New", "Consolas", monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:       #f0f4f8;
+    --bg-card:  #ffffff;
+    --bg-card2: #f8fafc;
+    --border:   #dde3ec;
+    --text:     #0f172a;
+    --text-muted:#64748b;
+    --text-label:#475569;
+    --step-idle:#e2e8f0;
+    --warn-bg:  #fffbeb;
+  }
+}
+
+/* ── 리셋 & 기본 ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ── 뷰 전환 ─────────────────────────────────────────────────────────────── */
+#view-dashboard, #view-receipt {
+  transition: opacity .4s ease;
+}
+#view-receipt {
+  display: none;
+  opacity: 0;
+}
+#view-receipt.visible {
+  display: flex;
+  opacity: 1;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   대시보드 뷰
+   ════════════════════════════════════════════════════════════════════════════ */
+#view-dashboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── 상단 바 ─────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+}
+.logo span { color: var(--text); font-weight: 400; }
+.status-dot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-label);
+}
+.dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.2);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
+  50%      { box-shadow: 0 0 0 6px rgba(34,197,94,.05); }
+}
+.conn-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  margin-left: 4px;
+}
+
+/* ── 메인 콘텐츠 ─────────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px 32px;
+  gap: 32px;
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── 단계 진행 바 ─────────────────────────────────────────────────────────── */
+.steps-wrapper {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+}
+.steps-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+.steps {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+/* 연결선 */
+.steps::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(10% + 10px);
+  right: calc(10% + 10px);
+  height: 2px;
+  background: var(--step-idle);
+  z-index: 0;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+.step-circle {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--step-idle);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: all .35s ease;
+}
+.step-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.4;
+  transition: color .35s;
+  white-space: nowrap;
+}
+/* 완료된 단계 */
+.step.done .step-circle {
+  background: var(--step-done);
+  border-color: var(--step-done);
+  color: #000;
+}
+.step.done .step-circle::after {
+  content: '✓';
+  font-size: 14px;
+  font-weight: 800;
+}
+.step.done .step-circle span { display: none; }
+.step.done .step-label { color: var(--step-done); }
+/* 진행 중인 단계 */
+.step.active .step-circle {
+  border-color: var(--step-active);
+  color: var(--step-active);
+  box-shadow: 0 0 0 4px rgba(56,189,248,.15);
+  animation: stepPulse 1.5s ease infinite;
+}
+.step.active .step-label { color: var(--step-active); font-weight: 700; }
+@keyframes stepPulse {
+  0%,100% { box-shadow: 0 0 0 4px rgba(56,189,248,.15); }
+  50%      { box-shadow: 0 0 0 8px rgba(56,189,248,.05); }
+}
+
+/* ── 지표 카드 ───────────────────────────────────────────────────────────── */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+.metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.metric-value {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+.metric-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── 시작 버튼 ───────────────────────────────────────────────────────────── */
+.start-btn {
+  background: var(--accent);
+  color: #000;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  padding: 16px 48px;
+  border-radius: 50px;
+  transition: transform .15s, box-shadow .15s, opacity .2s;
+  box-shadow: 0 4px 20px rgba(34,211,160,.3);
+}
+.start-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(34,211,160,.4);
+}
+.start-btn:active:not(:disabled) { transform: translateY(0); }
+.start-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ── 버튼 행 ──────────────────────────────────────────────────────────────── */
+.btn-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+.stop-btn {
+  background: transparent;
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 14px 36px;
+  border-radius: 50px;
+  display: none;              /* 주유 중에만 표시 */
+  transition: background .15s, transform .15s;
+}
+.stop-btn:hover { background: rgba(239,68,68,.1); transform: translateY(-1px); }
+.stop-btn:active { transform: translateY(0); }
+.stop-btn.visible { display: block; }
+
+/* ── 정지 확인 모달 ──────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.72);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  animation: fadeBack .2s ease;
+}
+.modal-backdrop.open { display: flex; }
+@keyframes fadeBack { from { opacity:0 } to { opacity:1 } }
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 32px 28px 24px;
+  width: min(360px, 90vw);
+  box-shadow: 0 24px 60px rgba(0,0,0,.5);
+  animation: modalIn .22s cubic-bezier(.34,1.56,.64,1);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+@keyframes modalIn {
+  from { opacity:0; transform:scale(.88) translateY(12px) }
+  to   { opacity:1; transform:scale(1)   translateY(0) }
+}
+.modal-icon   { font-size: 36px; text-align: center; }
+.modal-title  { font-size: 18px; font-weight: 800; text-align: center; color: var(--text); }
+.modal-body   { font-size: 13px; color: var(--text-label); text-align: center; line-height: 1.7; }
+.modal-info {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.modal-info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.modal-info-row .lbl { color: var(--text-muted); }
+.modal-info-row .val { font-weight: 700; color: var(--text); }
+.modal-btns { display: flex; gap: 10px; }
+.modal-cancel {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-label);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 0;
+  border-radius: 10px;
+  transition: background .15s;
+}
+.modal-cancel:hover { background: var(--bg-card2); }
+.modal-confirm {
+  flex: 1;
+  background: #ef4444;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 12px 0;
+  border-radius: 10px;
+  transition: opacity .15s, transform .15s;
+}
+.modal-confirm:hover  { opacity: .88; transform: translateY(-1px); }
+.modal-confirm:active { transform: translateY(0); }
+
+/* ── 주유 설정 패널 ─────────────────────────────────────────────────────── */
+.settings-panel {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: opacity .2s;
+}
+.settings-panel.locked {
+  opacity: .45;
+  pointer-events: none;
+}
+.settings-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.settings-label {
+  font-size: 13px;
+  color: var(--text-label);
+  white-space: nowrap;
+}
+.price-input {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  width: 110px;
+  text-align: right;
+}
+.price-input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.mode-tabs {
+  display: flex;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.mode-tab {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all .15s;
+}
+.mode-tab.active {
+  background: var(--accent);
+  color: #000;
+}
+.mode-tab:hover:not(.active) { color: var(--text); }
+.preset-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  color: var(--text-label);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  transition: all .15s;
+}
+.preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+.preset-btn.selected {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.custom-input-row {
+  display: flex;
+  align-items: center;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.custom-input-row:focus-within { border-color: var(--accent); }
+.input-prefix, .input-suffix {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.fuel-amount-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 8px 4px;
+  min-width: 0;
+}
+.settings-preview {
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 주유량 카드 진행 바 */
+.fuel-progress-wrap {
+  margin-top: 6px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.fuel-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width .15s linear;
+}
+
+/* ── 로그 스트립 ─────────────────────────────────────────────────────────── */
+.log-strip {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+}
+.log-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.log-msg {
+  font-size: 13px;
+  color: var(--text-label);
+  line-height: 1.5;
+  flex: 1;
+}
+.log-msg.new {
+  animation: fadein .4s ease;
+}
+@keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; } }
+
+/* ── SSE 디버그 패널 ─────────────────────────────────────────────────────── */
+.sse-debug-panel {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 10px;
+  color: #666;
+}
+.sse-debug-panel summary {
+  cursor: pointer;
+  color: #555;
+  font-size: 11px;
+  padding: 2px 0;
+  user-select: none;
+}
+.sse-debug-panel summary:hover { color: #888; }
+#sse-raw-log {
+  margin-top: 6px;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 110px;
+  overflow-y: auto;
+  line-height: 1.4;
+  color: #4a9;
+}
+/* ── 경고 배너 ───────────────────────────────────────────────────────────── */
+.warn-banner {
+  width: 100%;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  display: none;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--warn-text);
+  line-height: 1.5;
+}
+.warn-banner.visible { display: flex; animation: fadein .3s ease; }
+.warn-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   영수증 뷰
+   ════════════════════════════════════════════════════════════════════════════ */
+#view-receipt {
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 40px 24px;
+}
+.receipt-card {
+  background: var(--receipt-bg);
+  color: var(--receipt-text);
+  border: 1px solid var(--receipt-border);
+  border-radius: 4px;
+  width: 100%;
+  max-width: 380px;
+  padding: 36px 32px 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.18);
+  font-family: var(--mono);
+  position: relative;
+}
+/* 영수증 상단 톱니 효과 */
+.receipt-card::before {
+  content: '';
+  position: absolute;
+  top: -10px; left: 0; right: 0;
+  height: 10px;
+  background: radial-gradient(circle at 10px -2px, transparent 10px, var(--receipt-bg) 10px) repeat-x;
+  background-size: 20px 10px;
+}
+.receipt-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.receipt-logo {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  font-family: var(--font);
+  color: var(--receipt-text);
+  margin-bottom: 6px;
+}
+.receipt-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--receipt-muted);
+  margin-bottom: 10px;
+}
+.receipt-datetime {
+  font-size: 11px;
+  color: var(--receipt-muted);
+  line-height: 1.7;
+}
+.dash-line {
+  border: none;
+  border-top: 1px dashed var(--receipt-border);
+  margin: 16px 0;
+}
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 2.1;
+}
+.receipt-row .lbl { color: var(--receipt-muted); }
+.receipt-row .val { font-weight: 600; }
+.receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 2px solid var(--receipt-text);
+}
+.receipt-total-row .lbl { font-size: 15px; font-weight: 700; }
+.receipt-total-row .val { font-size: 20px; font-weight: 800; }
+.receipt-thank {
+  text-align: center;
+  font-size: 12px;
+  color: var(--receipt-muted);
+  margin-top: 20px;
+  line-height: 1.7;
+  font-family: var(--font);
+}
+.receipt-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+.btn-restart {
+  flex: 1;
+  background: var(--receipt-text);
+  color: var(--receipt-bg);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 11px 0;
+  border-radius: 6px;
+  transition: opacity .15s;
+}
+.btn-restart:hover { opacity: .85; }
+.btn-print {
+  flex: 1;
+  background: transparent;
+  color: var(--receipt-text);
+  border: 1px solid var(--receipt-border);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 11px 0;
+  border-radius: 6px;
+  transition: background .15s;
+}
+.btn-print:hover { background: rgba(0,0,0,.05); }
+
+/* ── 연료 게이지 카드 ─────────────────────────────────────────────────────── */
+.gauge-card {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.gauge-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  align-self: flex-start;
+}
+.gauge-wrap {
+  width: 100%;
+  max-width: 280px;
+}
+.gauge-svg { width: 100%; display: block; }
+/* SVG 내부 요소 — CSS custom properties → SVG attribute 로 전달 */
+.gauge-track  { stroke: var(--border); }
+.gauge-fill   { transition: stroke-dashoffset .15s linear; }
+.gauge-el {
+  fill: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font);
+}
+.gauge-icon { font-size: 28px; dominant-baseline: middle; text-anchor: middle; }
+.gauge-amount-svg {
+  fill: var(--text);
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--font);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.gauge-pct-svg {
+  fill: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+/* 게이지 하단 수치 행 */
+.gauge-meta {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 280px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.gauge-meta .gm-val { font-weight: 700; color: var(--text-label); }
+
+/* ── 인쇄 ────────────────────────────────────────────────────────────────── */
+@media print {
+  body { background: #fff; }
+  #view-dashboard { display: none !important; }
+  #view-receipt {
+    display: flex !important;
+    opacity: 1 !important;
+    min-height: unset;
+    padding: 0;
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+  .receipt-card {
+    box-shadow: none;
+    border: none;
+    max-width: 100%;
+    padding: 0;
+  }
+  .receipt-card::before { display: none; }
+  .receipt-actions { display: none; }
+}
+
+/* ── 반응형 ──────────────────────────────────────────────────────────────── */
+@media (max-width: 520px) {
+  .topbar { padding: 14px 18px; }
+  .main { padding: 24px 16px; gap: 20px; }
+  .metrics { grid-template-columns: 1fr 1fr; }
+  .metrics .metric-card:last-child { grid-column: 1 / -1; }
+  .metric-value { font-size: 28px; }
+  .steps-wrapper { padding: 20px 16px; }
+  .step-label { font-size: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     대시보드 뷰
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="view-dashboard">
+
+  <!-- 상단 바 -->
+  <header class="topbar">
+    <div class="logo">Auto<span>Fuel</span></div>
+    <div class="status-dot">
+      <div class="dot"></div>
+      시스템 정상
+      <span class="conn-badge" id="conn-badge">연결 중...</span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- 단계 진행 바 -->
+    <div class="steps-wrapper">
+      <div class="steps-title">주유 진행 단계</div>
+      <div class="steps" id="steps">
+        <div class="step" id="step-0">
+          <div class="step-circle"><span>1</span></div>
+          <div class="step-label">차량<br>인식</div>
+        </div>
+        <div class="step" id="step-1">
+          <div class="step-circle"><span>2</span></div>
+          <div class="step-label">도어<br>열기</div>
+        </div>
+        <div class="step" id="step-2">
+          <div class="step-circle"><span>3</span></div>
+          <div class="step-label">마개<br>제거</div>
+        </div>
+        <div class="step" id="step-3">
+          <div class="step-circle"><span>4</span></div>
+          <div class="step-label">주유<br>중</div>
+        </div>
+        <div class="step" id="step-4">
+          <div class="step-circle"><span>5</span></div>
+          <div class="step-label">마무리</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 연료 게이지 -->
+    <div class="gauge-card">
+      <div class="gauge-card-title">연료 게이지</div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 200 175" aria-hidden="true">
+          <defs>
+            <!-- 채워지는 호 색상 그라디언트 -->
+            <linearGradient id="grd" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#22d3a0"/>
+              <stop offset="100%" stop-color="#38bdf8"/>
+            </linearGradient>
+            <!-- 발광 필터 -->
+            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- 배경 트랙 (회색 호) -->
+          <path class="gauge-track"
+                d="M 47,153 A 75,75 0 1 1 153,153"
+                fill="none" stroke-width="14" stroke-linecap="round"/>
+
+          <!-- 채워지는 호 — stroke-dashoffset 으로 비율 표현 -->
+          <path id="gauge-arc"
+                d="M 47,153 A 75,75 0 1 1 153,153"
+                fill="none" stroke="url(#grd)" stroke-width="14" stroke-linecap="round"
+                stroke-dasharray="354" stroke-dashoffset="354"
+                filter="url(#glow)"/>
+
+          <!-- E / F 레이블 -->
+          <text x="22"  y="166" class="gauge-el">E</text>
+          <text x="172" y="166" class="gauge-el">F</text>
+
+          <!-- 중앙: 아이콘 + 수치 + 백분율 -->
+          <text x="100" y="82"  class="gauge-icon">⛽</text>
+          <text x="100" y="116" class="gauge-amount-svg" id="gauge-amount-txt">─</text>
+          <text x="100" y="138" class="gauge-pct-svg"    id="gauge-pct-txt"></text>
+        </svg>
+      </div>
+      <!-- E·F 아래 보조 수치 -->
+      <div class="gauge-meta">
+        <span>0 L</span>
+        <span id="gauge-target-label" class="gm-val">─</span>
+        <span id="gauge-target-right">목표</span>
+      </div>
+    </div>
+
+    <!-- 지표 카드 -->
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">⏱ 경과 시간</div>
+        <div class="metric-value" id="timer">00:00</div>
+        <div class="metric-unit">분 : 초</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">⛽ 주유량</div>
+        <div class="metric-value" id="liters">0.0</div>
+        <div class="fuel-progress-wrap"><div class="fuel-progress-bar" id="fuel-progress"></div></div>
+        <div class="metric-unit" id="liters-unit">리터 (L)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">💳 예상 금액</div>
+        <div class="metric-value" id="amount">0</div>
+        <div class="metric-unit">원 (KRW)</div>
+      </div>
+    </div>
+
+    <!-- 주유 설정 패널 -->
+    <div class="settings-panel" id="settings-panel">
+      <div class="settings-title">주유 설정</div>
+
+      <!-- 단가 고정 표시 -->
+      <div class="settings-row">
+        <span class="settings-label">단가 (원/L)</span>
+        <span class="settings-label" style="font-weight:700; color:var(--text);">2,000 원/L</span>
+        <input type="hidden" id="price-input" value="2000">
+      </div>
+
+      <!-- 주유 방식 탭 (금액 / 리터) -->
+      <div class="settings-row">
+        <span class="settings-label">주유 방식</span>
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="krw"   onclick="switchMode('krw')">금액</button>
+          <button class="mode-tab"        data-mode="liter" onclick="switchMode('liter')">리터</button>
+        </div>
+      </div>
+
+      <!-- 금액·리터 입력 영역 -->
+      <div id="amount-input-area" style="display:flex; flex-direction:column; gap:10px;">
+        <!-- 프리셋 버튼 (금액 모드) -->
+        <div class="preset-btns" id="preset-btns">
+          <button class="preset-btn" onclick="setPreset(10000)">1만원</button>
+          <button class="preset-btn" onclick="setPreset(30000)">3만원</button>
+          <button class="preset-btn" onclick="setPreset(50000)">5만원</button>
+          <button class="preset-btn" onclick="setPreset(70000)">7만원</button>
+        </div>
+        <!-- 직접 입력 -->
+        <div class="custom-input-row">
+          <span class="input-prefix" id="input-prefix">₩</span>
+          <input class="fuel-amount-input" type="number" id="fuel-input"
+                 placeholder="직접 입력" min="0" oninput="onCustomInput()">
+          <span class="input-suffix" id="input-suffix"></span>
+        </div>
+      </div>
+
+      <!-- 예상 미리보기 -->
+      <div class="settings-preview" id="settings-preview">목표 금액을 입력하세요</div>
+    </div>
+
+    <!-- 버튼 행 -->
+    <div class="btn-row">
+      <button class="start-btn" id="start-btn" onclick="handleStart()">
+        ⚡ 주유 시작
+      </button>
+      <button class="stop-btn" id="stop-btn" onclick="showStopModal()">
+        🛑 주유 정지
+      </button>
+    </div>
+
+    <!-- 로그 스트립 -->
+    <div class="log-strip">
+      <span class="log-icon" id="log-icon">📡</span>
+      <span class="log-msg" id="log-msg">서버 연결 대기 중...</span>
+    </div>
+
+    <!-- SSE 수신 디버그 패널 (개발/진단용) -->
+    <details class="sse-debug-panel">
+      <summary>📡 SSE 수신 로그 (진단용)</summary>
+      <div id="sse-raw-log">메시지 대기 중...</div>
+    </details>
+
+    <!-- 경고 배너 -->
+    <div class="warn-banner" id="warn-banner">
+      <span class="warn-icon">⚠️</span>
+      <span id="warn-msg"></span>
+    </div>
+
+  </div>
+  <!-- 정지 확인 모달 -->
+  <div class="modal-backdrop" id="stop-modal" onclick="handleBackdropClick(event)">
+    <div class="modal-card">
+      <div class="modal-icon">⛽🛑</div>
+      <div class="modal-title">주유를 정지하시겠습니까?</div>
+      <div class="modal-body">
+        지금까지 주유한 양으로 정산합니다.<br>
+        로봇은 안전하게 마무리 동작을 진행합니다.
+      </div>
+      <!-- 현재 수치 -->
+      <div class="modal-info">
+        <div class="modal-info-row">
+          <span class="lbl">현재 주유량</span>
+          <span class="val" id="modal-liters">─</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="lbl">현재 금액</span>
+          <span class="val" id="modal-amount">─</span>
+        </div>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-cancel" onclick="closeStopModal()">계속 주유</button>
+        <button class="modal-confirm" onclick="confirmStop()">정지 및 정산</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /view-dashboard -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     영수증 뷰
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="view-receipt">
+  <div class="receipt-card">
+
+    <div class="receipt-header">
+      <div class="receipt-logo">AUTOFUEL</div>
+      <div class="receipt-title" id="receipt-title">주유 완료</div>
+      <div class="receipt-datetime" id="receipt-dt">─</div>
+    </div>
+
+    <hr class="dash-line">
+
+    <div class="receipt-row"><span class="lbl">유종</span><span class="val">휘발유</span></div>
+    <div class="receipt-row"><span class="lbl">주유량</span><span class="val" id="r-liters">─</span></div>
+    <div class="receipt-row"><span class="lbl">단가</span><span class="val" id="r-price">2,000 원/L</span></div>
+
+    <hr class="dash-line">
+
+    <div class="receipt-total-row">
+      <span class="lbl">합계</span>
+      <span class="val" id="r-amount">─</span>
+    </div>
+
+    <hr class="dash-line">
+
+    <div class="receipt-row"><span class="lbl">소요 시간</span><span class="val" id="r-time">─</span></div>
+    <div class="receipt-row"><span class="lbl">주유 로봇</span><span class="val">Doosan M0609 × 2</span></div>
+
+    <div class="receipt-thank">
+      자율주행 주유 서비스를 이용해 주셔서<br>감사합니다 🙏
+    </div>
+
+    <div class="receipt-actions">
+      <button class="btn-restart" onclick="location.reload()">↺ 다시 시작</button>
+      <button class="btn-print" onclick="window.print()">🖨 인쇄</button>
+    </div>
+
+  </div>
+</div><!-- /view-receipt -->
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════════
+   상수 및 상태
+   ════════════════════════════════════════════════════════════════════════════ */
+const LITER_PER_TICK_DEFAULT = 0.05; // 목표 미입력 시 폴백 (0.5 L/s)
+
+const state = {
+  connected:     false,
+  fuelingActive: false,
+  done:          false,
+  elapsedSec:    0,
+  liters:        0,
+  timerHandle:   null,
+  literHandle:   null,
+  fuelDoneTimer: null,   // 목표 달성 후 자동 영수증 폴백 타이머
+  // 설정값
+  pricePerLiter: 2000,
+  targetLiters:  0,
+  targetKrw:     0,      // 입력한 목표 금액 (원) — 영수증에 그대로 표시
+  literPerTick:  LITER_PER_TICK_DEFAULT,
+  fuelMode:      'krw',
+  stopped:       false,
+  // 흐름 제어
+  started:       false,  // 주유 시작 버튼을 눌렀는지 (SSE 히스토리 리플레이 방지)
+  receiptShown:  false,  // 영수증 이미 표시됐는지 (중복 방지)
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   로그 패턴 → 단계 / 친화적 메시지 매핑
+   ════════════════════════════════════════════════════════════════════════════ */
+// 각 항목: { re, step, msg }
+// step: 활성화할 단계 인덱스 (0~4), null 이면 단계 변경 없음
+const PATTERNS = [
+  { re: /\[차량\].*주유소 입고 시작/,         step: null, msg: '차량이 입고 중입니다...' },
+  { re: /\[차량\].*주차 완료/,               step: 1,    msg: '차량 주차 완료. 주유구 덮개를 열고 있습니다.' },
+  { re: /\[B\].*덮개 자동 열림 시작/,        step: 1,    msg: '주유구 덮개를 여는 중입니다...' },
+  { re: /\[B\].*덮개 위치 확인 완료/,        step: 1,    msg: '덮개 열림 확인 완료.' },
+  { re: /\[B\].*마개 위치 인식 시작/,        step: 1,    msg: '마개 위치를 확인하는 중입니다...' },
+  { re: /\[B\].*마개 위치 확인 완료/,        step: 2,    msg: '마개 위치 확인 완료. 마개 분리를 시작합니다.' },
+  { re: /\[B\].*마개 분리 시작/,             step: 2,    msg: '마개를 분리하는 중입니다...' },
+  { re: /\[B\].*마개 추출 완료/,             step: 2,    msg: '마개 분리 완료. 주유를 시작합니다.' },
+  { re: /\[A\].*주유구 위치 확인 완료/,      step: 3,    msg: '주유구 위치 확인. 노즐을 삽입합니다...' },
+  { re: /A.*주유구 접근 시작/,               step: 3,    msg: '노즐이 주유구로 접근 중입니다...' },
+  { re: /A.*삽입 준비/,                      step: 3,    msg: '노즐 삽입 위치 도착. 주유를 시작합니다.', startFueling: true },
+  { re: /A.*노즐 삽입 완료/,                 step: 3,    msg: '주유 진행 중입니다...' },
+  { re: /A.*주유 완료.*노즐/,                step: 3,    msg: '주유 완료! 노즐을 회수합니다.', stopLiters: true },
+  { re: /\[B\].*마개 재장착 완료/,           step: 4,    msg: '마개 재장착 완료. 마무리 중입니다.' },
+  { re: /\[B\].*덮개 닫힘 완료/,             step: 4,    msg: '덮개 닫힘 완료.' },
+  { re: /\[B\].*초기 위치 복귀 완료/,        step: 4,    msg: '로봇 복귀 완료.' },
+  { re: /\[완료\].*A\/B.*전체 시퀀스/,       step: 4,    msg: '주유가 완료되었습니다.', complete: true },
+];
+
+// 경고 패턴 → 친화적 메시지
+const WARN_PATTERNS = [
+  { re: /\[WARN\].*주유구 위치 인식 실패/,    msg: '주유구 위치 자동 인식 실패 — 기준값으로 진행합니다.' },
+  { re: /\[WARN\].*마개 위치 확인 실패/,      msg: '마개 위치 자동 인식 실패 — 기준값으로 진행합니다.' },
+  { re: /\[WARN\].*덮개 위치 확인 실패/,      msg: '덮개 위치 자동 인식 실패 — 기준값으로 진행합니다.' },
+  { re: /\[WARN\]/,                           msg: '경고가 발생했습니다. 주유는 계속 진행됩니다.' },
+  { re: /⚠️.*타임아웃/,                       msg: '일부 동작에서 시간 초과가 발생했습니다. 자동으로 복구 중입니다.' },
+  { re: /\[⚠️ 타임아웃\]/,                   msg: '타임아웃 발생 — 기준값으로 다음 단계를 진행합니다.' },
+];
+
+/* ════════════════════════════════════════════════════════════════════════════
+   단계 활성화 헬퍼
+   ════════════════════════════════════════════════════════════════════════════ */
+let currentStep = -1;
+
+function activateStep(idx) {
+  if (idx <= currentStep) return;
+  for (let i = 0; i <= 4; i++) {
+    const el = document.getElementById(`step-${i}`);
+    el.classList.remove('done', 'active');
+    if (i < idx)       el.classList.add('done');
+    else if (i === idx) el.classList.add('active');
+  }
+  currentStep = idx;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   타이머 & 리터 카운터
+   ════════════════════════════════════════════════════════════════════════════ */
+function startElapsedTimer() {
+  if (state.timerHandle) return;
+  state.timerHandle = setInterval(() => {
+    if (state.done) return;
+    state.elapsedSec++;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function startLiterCounter() {
+  if (state.fuelingActive || state.literHandle) return;
+  state.fuelingActive = true;
+  document.getElementById('stop-btn').classList.add('visible');
+  state.literHandle = setInterval(() => {
+    if (!state.fuelingActive) return;
+    state.liters += state.literPerTick;
+
+    // 목표 리터 도달 시 카운터 정지
+    if (state.targetLiters > 0 && state.liters >= state.targetLiters) {
+      state.liters = state.targetLiters;
+      state.fuelingActive = false;
+      clearInterval(state.literHandle);
+      const krwStr = (state.targetKrw > 0 ? state.targetKrw : Math.round(state.liters * state.pricePerLiter)).toLocaleString('ko-KR');
+      setLog('✅', `목표 주유량 도달 (${state.liters.toFixed(1)} L / ${krwStr}원). 로봇 마무리 중...`);
+      // 폴백: 120초 후에도 [완료] SSE 가 안 오면 영수증 자동 표시
+      state.fuelDoneTimer = setTimeout(() => showReceipt(), 120000);
+    }
+
+    updateMetrics();
+  }, 100);
+}
+
+function stopCounters() {
+  state.fuelingActive = false;
+  state.done = true;
+  clearInterval(state.timerHandle);
+  clearInterval(state.literHandle);
+  if (state.fuelDoneTimer) { clearTimeout(state.fuelDoneTimer); state.fuelDoneTimer = null; }
+  document.getElementById('stop-btn').classList.remove('visible');
+}
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(state.elapsedSec / 60)).padStart(2, '0');
+  const s = String(state.elapsedSec % 60).padStart(2, '0');
+  document.getElementById('timer').textContent = `${m}:${s}`;
+}
+
+function fmtLiters(l) {
+  return l.toFixed(1) + ' L';
+}
+
+function fmtKRW(l) {
+  return Math.round(l * state.pricePerLiter).toLocaleString('ko-KR') + ' 원';
+}
+
+function updateMetrics() {
+  const liters = state.liters;
+  const target = state.targetLiters;
+  document.getElementById('liters').textContent =
+    target > 0 ? `${liters.toFixed(1)} / ${target.toFixed(1)}` : liters.toFixed(1);
+  document.getElementById('liters-unit').textContent =
+    target > 0 ? 'L (목표 달성 대기)' : '리터 (L)';
+  document.getElementById('amount').textContent =
+    Math.round(liters * state.pricePerLiter).toLocaleString('ko-KR');
+
+  // 상단 소형 진행 바
+  const pct = target > 0 ? Math.min(liters / target * 100, 100) : 0;
+  document.getElementById('fuel-progress').style.width = pct + '%';
+
+  // 원형 게이지
+  updateGauge(liters, target, pct);
+}
+
+function updateGauge(liters, target, pct) {
+  const ARC_LEN = 354;
+  const offset  = ARC_LEN * (1 - pct / 100);
+
+  document.getElementById('gauge-arc').setAttribute('stroke-dashoffset', offset.toFixed(1));
+  document.getElementById('gauge-amount-txt').textContent =
+    liters > 0 ? liters.toFixed(1) + ' L' : '─';
+  document.getElementById('gauge-pct-txt').textContent =
+    target > 0 ? Math.round(pct) + '%' : '';
+}
+
+function initGauge() {
+  const target = state.targetLiters;
+  const label  = target > 0 ? target.toFixed(1) + ' L' : '─';
+  document.getElementById('gauge-target-label').textContent = label;
+  document.getElementById('gauge-target-right').textContent = target > 0 ? '목표' : '';
+  // 게이지 초기화
+  document.getElementById('gauge-arc').setAttribute('stroke-dashoffset', '354');
+  document.getElementById('gauge-amount-txt').textContent = '─';
+  document.getElementById('gauge-pct-txt').textContent    = '';
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   로그 / 경고 UI 업데이트
+   ════════════════════════════════════════════════════════════════════════════ */
+function setLog(icon, msg) {
+  const msgEl = document.getElementById('log-msg');
+  document.getElementById('log-icon').textContent = icon;
+  msgEl.textContent = msg;
+  msgEl.classList.remove('new');
+  void msgEl.offsetWidth; // reflow for re-animation
+  msgEl.classList.add('new');
+}
+
+function showWarn(msg) {
+  const banner = document.getElementById('warn-banner');
+  document.getElementById('warn-msg').textContent = msg;
+  banner.classList.add('visible');
+  setTimeout(() => banner.classList.remove('visible'), 8000);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   정지 모달
+   ════════════════════════════════════════════════════════════════════════════ */
+function showStopModal() {
+  // 모달에 현재 수치 표시
+  document.getElementById('modal-liters').textContent =
+    state.liters.toFixed(1) + ' L';
+  document.getElementById('modal-amount').textContent =
+    Math.round(state.liters * state.pricePerLiter).toLocaleString('ko-KR') + ' 원';
+  document.getElementById('stop-modal').classList.add('open');
+}
+
+function closeStopModal() {
+  document.getElementById('stop-modal').classList.remove('open');
+}
+
+function handleBackdropClick(e) {
+  if (e.target === document.getElementById('stop-modal')) closeStopModal();
+}
+
+async function confirmStop() {
+  closeStopModal();
+
+  // 카운터 즉시 정지 (금액 고정)
+  state.fuelingActive = false;
+  clearInterval(state.literHandle);
+  state.stopped = true;
+
+  // 정지 버튼 숨김
+  document.getElementById('stop-btn').classList.remove('visible');
+
+  const krw = Math.round(state.liters * state.pricePerLiter).toLocaleString('ko-KR');
+  setLog('🛑', `주유 정지 — ${state.liters.toFixed(1)} L / ${krw}원으로 정산됩니다. 로봇이 마무리 중입니다...`);
+  // 중도 정지 시 targetKrw 를 실제 누적 금액으로 재설정 (영수증 표시용)
+  state.targetKrw    = Math.round(state.liters * state.pricePerLiter);
+  state.targetLiters = state.liters;
+
+  // 서버에 정지 신호 → Isaac Sim /stop_fueling 토픽 발행
+  try {
+    await fetch('/stop', { method: 'POST' });
+  } catch (_) { /* 서버 없어도 UI는 동작 */ }
+
+  // [완료] SSE를 계속 기다림 → 영수증 전환 시 stopped=true 이면 "중도 정산" 표시
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   주유 설정 패널 로직
+   ════════════════════════════════════════════════════════════════════════════ */
+function switchMode(mode) {
+  state.fuelMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.mode === mode);
+  });
+  // 리터 모드면 프리셋 숨김, prefix/suffix 변경
+  const presets = document.getElementById('preset-btns');
+  presets.style.display = (mode === 'liter') ? 'none' : 'flex';
+  document.getElementById('input-prefix').textContent = (mode === 'liter') ? '🔢' : '₩';
+  document.getElementById('input-suffix').textContent = (mode === 'liter') ? 'L' : '원';
+  document.getElementById('fuel-input').placeholder =
+    (mode === 'liter') ? '목표 리터 입력' : '목표 금액 입력';
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('fuel-input').value = '';
+  updatePreview();
+}
+
+function setPreset(krw) {
+  document.getElementById('fuel-input').value = krw;
+  document.querySelectorAll('.preset-btn').forEach(b => {
+    b.classList.toggle('selected', parseInt(b.textContent) * 10000 === krw
+      || b.getAttribute('onclick').includes(krw));
+  });
+  updatePreview();
+}
+
+function onCustomInput() {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected'));
+  updatePreview();
+}
+
+function updatePreview() {
+  const price = 2000;
+  const raw   = parseFloat(document.getElementById('fuel-input')?.value) || 0;
+  const mode  = state.fuelMode;
+  const preview = document.getElementById('settings-preview');
+
+  if (!raw || raw <= 0) {
+    preview.textContent = mode === 'liter' ? '목표 리터를 입력하세요' : '목표 금액을 입력하세요';
+    return;
+  }
+
+  let targetL, targetKRW;
+  if (mode === 'krw') {
+    targetL   = raw / price;
+    targetKRW = raw;
+  } else {
+    targetL   = raw;
+    targetKRW = raw * price;
+  }
+  const fillSecs = calcFillSeconds(targetKRW);
+  preview.textContent =
+    `${targetL.toFixed(1)} L · ${Math.round(targetKRW).toLocaleString('ko-KR')}원 · 주유 시간 약 ${Math.round(fillSecs)}초`;
+}
+
+function calcFillSeconds(krw) {
+  // 1만원=3초, 2만원=5초, N만원=(1 + N*2)초  →  초 = 1 + 금액/5000
+  return 1 + krw / 5000;
+}
+
+function readSettings() {
+  state.pricePerLiter = 2000;
+  const raw  = parseFloat(document.getElementById('fuel-input')?.value) || 0;
+  const mode = state.fuelMode;
+
+  if (raw <= 0) {
+    state.targetLiters = 0;
+    state.targetKrw    = 0;
+    state.literPerTick = LITER_PER_TICK_DEFAULT;
+    return;
+  }
+
+  if (mode === 'krw') {
+    state.targetKrw    = raw;
+    state.targetLiters = raw / state.pricePerLiter;
+    const secs = calcFillSeconds(raw);
+    state.literPerTick = state.targetLiters / (secs * 10);
+  } else {
+    state.targetLiters = raw;
+    state.targetKrw    = raw * state.pricePerLiter;
+    const secs = calcFillSeconds(raw * state.pricePerLiter);
+    state.literPerTick = state.targetLiters / (secs * 10);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SSE 디버그 패널
+   ════════════════════════════════════════════════════════════════════════════ */
+const _sseRawLines = [];
+function _updateSseDebug(line) {
+  // 한국어 포함 또는 핵심 태그가 있는 라인만 표시 (Isaac 내부 영어 노이즈 필터)
+  const _KEY = /[가-힣]|\[차량\]|\[A\]|\[B\]|\[완료\]|\[웹UI\]|\[RESET\]|\[LOOP\]|✅|mode_switch/;
+  if (!_KEY.test(line)) return;
+  _sseRawLines.push(line.slice(0, 140));   // 너무 긴 줄 잘라내기
+  if (_sseRawLines.length > 15) _sseRawLines.shift();
+  const el = document.getElementById('sse-raw-log');
+  if (el) el.textContent = _sseRawLines.slice().reverse().join('\n');
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SSE 이벤트 처리
+   ════════════════════════════════════════════════════════════════════════════ */
+function processLine(line) {
+  if (!line || line === '__connected__') return;
+  _updateSseDebug(line);
+
+  // 주유 시작 버튼을 누른 이후에만 처리 (SSE 히스토리 리플레이 방지)
+  if (!state.started) return;
+
+  // 경고 체크
+  for (const { re, msg } of WARN_PATTERNS) {
+    if (re.test(line)) { showWarn(msg); break; }
+  }
+
+  // 주요 패턴 체크
+  for (const p of PATTERNS) {
+    if (!p.re.test(line)) continue;
+
+    if (p.step !== null) activateStep(p.step);
+    if (p.msg)           setLog('🔧', p.msg);
+
+    // startFueling: 주유건 삽입 시점 — 연료 게이지 시뮬레이션 시작
+    if (p.startFueling) {
+      startLiterCounter();
+      setLog('⛽', p.msg);
+    }
+
+    // stopLiters: 리터 카운터 정지 (타이머/SSE는 계속)
+    if (p.stopLiters && state.fuelingActive) {
+      state.fuelingActive = false;
+      clearInterval(state.literHandle);
+      const krwStr = (state.targetKrw > 0 ? state.targetKrw : Math.round(state.liters * state.pricePerLiter)).toLocaleString('ko-KR');
+      setLog('⛽', `주유 완료 — ${state.liters.toFixed(1)} L / ${krwStr}원. 마무리 중입니다...`);
+    }
+
+    // complete: 모든 단계 완료 → 즉시 영수증
+    if (p.complete) {
+      setLog('✅', p.msg);
+      stopCounters();
+      for (let i = 0; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        el.classList.remove('active');
+        el.classList.add('done');
+      }
+      showReceipt();
+    }
+
+    return;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   주유 시작 버튼
+   ════════════════════════════════════════════════════════════════════════════ */
+async function handleStart() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+
+  // 설정 읽기 및 패널 잠금
+  readSettings();
+  initGauge();
+  document.getElementById('settings-panel').classList.add('locked');
+
+  // 시작 상태 설정 (이후 SSE 이벤트 처리 허용)
+  state.started = true;
+
+  // 경과 타이머만 즉시 시작 (연료 게이지는 주유건 삽입 시 SSE로 시작)
+  startElapsedTimer();
+  activateStep(0);
+
+  const krwStr = state.targetKrw > 0
+    ? `${state.targetLiters.toFixed(1)}L / ${Math.round(state.targetKrw).toLocaleString('ko-KR')}원`
+    : '만충';
+  setLog('🚗', `주유 시작 명령을 전송하는 중... (목표: ${krwStr})`);
+
+  try {
+    const res = await fetch('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_liters: state.targetLiters }),
+    });
+    if (res.ok) {
+      setLog('✅', '주유 시작 명령 전송 완료. 차량 입고를 기다리는 중...');
+    } else {
+      setLog('❌', `서버 오류 (${res.status}). 시뮬레이션은 계속 진행됩니다.`);
+    }
+  } catch (e) {
+    setLog('❌', '서버에 연결할 수 없습니다. SSE 연결 상태를 확인하세요.');
+    btn.disabled = false;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   영수증 전환
+   ════════════════════════════════════════════════════════════════════════════ */
+function showReceipt() {
+  if (state.receiptShown) return;   // 중복 표시 방지
+  state.receiptShown = true;
+
+  // 남아있는 카운터 모두 정지
+  stopCounters();
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
+  });
+  const timeStr = now.toLocaleTimeString('ko-KR', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+
+  document.getElementById('receipt-dt').innerHTML = `${dateStr}<br>${timeStr}`;
+  document.getElementById('r-price').textContent  = state.pricePerLiter.toLocaleString('ko-KR') + ' 원/L';
+
+  // 주유량: 입력한 목표값 우선, 없으면 시뮬레이션 누적값
+  const displayLiters = state.targetLiters > 0 ? state.targetLiters : state.liters;
+  document.getElementById('r-liters').textContent = fmtLiters(displayLiters);
+
+  // 금액: 입력한 금액 그대로 우선, 없으면 누적 리터 계산
+  const displayKrw = state.targetKrw > 0
+    ? state.targetKrw.toLocaleString('ko-KR') + ' 원'
+    : fmtKRW(state.liters);
+  document.getElementById('r-amount').textContent = displayKrw;
+
+  // 소요 시간 (경과 타이머)
+  const m = String(Math.floor(state.elapsedSec / 60)).padStart(2, '0');
+  const s = String(state.elapsedSec % 60).padStart(2, '0');
+  document.getElementById('r-time').textContent = `${m}분 ${s}초`;
+
+  // 중도 정지 시 영수증 제목 변경
+  if (state.stopped) {
+    document.getElementById('receipt-title').textContent = '중도 정산';
+    document.getElementById('receipt-title').style.color = '#ef4444';
+  }
+
+  // 대시보드 페이드아웃 → 영수증 페이드인
+  const dash    = document.getElementById('view-dashboard');
+  const receipt = document.getElementById('view-receipt');
+
+  dash.style.opacity = '0';
+  setTimeout(() => {
+    dash.style.display = 'none';
+    receipt.classList.add('visible');
+  }, 400);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SSE 연결
+   ════════════════════════════════════════════════════════════════════════════ */
+(function initSSE() {
+  const es = new EventSource('/events');
+
+  es.onopen = () => {
+    state.connected = true;
+    const badge = document.getElementById('conn-badge');
+    badge.textContent = '연결됨';
+    badge.style.background = 'rgba(34,197,94,.15)';
+    badge.style.color = '#22c55e';
+    setLog('📡', '서버에 연결되었습니다. 주유 시작 버튼을 누르세요.');
+  };
+
+  es.onmessage = (e) => {
+    processLine(e.data);
+  };
+
+  es.onerror = () => {
+    const badge = document.getElementById('conn-badge');
+    badge.textContent = '연결 끊김';
+    badge.style.background = 'rgba(239,68,68,.15)';
+    badge.style.color = '#ef4444';
+    if (!state.done) {
+      setLog('🔴', '서버 연결이 끊겼습니다. 재연결 중...');
+    }
+  };
+})();
+</script>
+</body>
+</html>
