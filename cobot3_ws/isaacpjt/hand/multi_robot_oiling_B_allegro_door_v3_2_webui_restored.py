@@ -116,7 +116,7 @@ WRIST_PITCH_CAP_GRASP_DEG = -45.0
 
 # 문 닫기 길이 보정
 CAP_GRASP_EXTRA_INWARD_M = 0.04
-CAP_RESTORE_EXTRA_INWARD_M = 0.10
+CAP_RESTORE_EXTRA_INWARD_M = 0.20
 
 HAND_POSE_OPEN = "open"
 HAND_POSE_CAP_HOLD = "cap_grasp"
@@ -183,7 +183,7 @@ ROBOT_A_BASE_EULER_DEG = np.array([90.0, 0.0, 0.0], dtype=float)  # A 로봇 받
 ROBOT_A_BASE_ORIENTATION = euler_angles_to_quat(np.deg2rad(ROBOT_A_BASE_EULER_DEG))  # 위 회전을 쿼터니언으로
 
 ROBOT_B_PRIM_PATH    = "/World/m0609_B"
-ROBOT_B_BASE_WORLD   = np.array([0.0, 0.0, 1.0], dtype=float)
+ROBOT_B_BASE_WORLD   = np.array([0.0, -0.05, 1.0], dtype=float)
 ROBOT_B_BASE_EULER_DEG = np.array([90.0, 0.0, 0.0], dtype=float)
 ROBOT_B_BASE_ORIENTATION = euler_angles_to_quat(np.deg2rad(ROBOT_B_BASE_EULER_DEG))
 
@@ -270,6 +270,8 @@ GRIPPER_LENGTH_B = 0.32  # B 로봇 그리퍼 길이(m) - 손목(link_6)에서 �
 # 덮개를 도로 열려고 계속 밀기 때문에, CLOSE_COVER 시작 시점에 targetVelocity를 0으로 꺼서
 # (DOOR_AUTO_OPEN_DRIVE_VELOCITY -> 0) 더 이상 못 열게 막고, 다음 Play/리셋(on_play_reset)에서
 # 다시 DOOR_AUTO_OPEN_DRIVE_VELOCITY로 복원해 자동 열기가 그대로 동작하게 한다.
+COVER_PRE_CLOSE_DEG = 30.0
+
 COVER_START_DEG = 0.0
 COVER_OPEN_DEG  = 130.0
 COVER_FULL_CLOSE_DEG = 0.0  # 30도까지 1차로 닫은 뒤, 중앙으로 옮겨 마지막으로 완전히 미는 목표 각도
@@ -1075,7 +1077,7 @@ def build_close_cover_sequence(
         )
         return rotated + DOOR_TOUCH_OFFSET + PORT_OUTWARD_NORMAL_UNIT * DOOR_CLOSE_OUTWARD_CLEARANCE
 
-    mid_deg = (COVER_OPEN_DEG + COVER_START_DEG) / 2.0
+    mid_deg = (COVER_OPEN_DEG + COVER_PRE_CLOSE_DEG) / 2.0
     stages = []
     stage_log = {}
 
@@ -1090,7 +1092,7 @@ def build_close_cover_sequence(
 
     # 실제 밀기 구간은 오른쪽 offset을 점차 줄여서 왼쪽으로 쓸어 미는 느낌을 준다.
     mid_push = p(mid_deg) + right_vec * 0.35
-    start_push = p(COVER_START_DEG)
+    pre_close_push = p(COVER_PRE_CLOSE_DEG)
 
     stages += [
         FuelStage("B10_01_move_right", right_ready, tolerance=0.08, speed=DEFAULT_TARGET_SPEED),
@@ -1098,8 +1100,8 @@ def build_close_cover_sequence(
                   target_door_angle=COVER_OPEN_DEG),
         FuelStage("B10_03_push_left_mid", mid_push, hold_steps=20, tolerance=0.07, speed=NEAR_TARGET_SPEED,
                   target_door_angle=mid_deg),
-        FuelStage("B10_04_push_left_start", start_push, hold_steps=30, tolerance=0.07, speed=NEAR_TARGET_SPEED,
-                  target_door_angle=COVER_START_DEG),
+        FuelStage("B10_04_push_left_start", pre_close_push, hold_steps=30, tolerance=0.07, speed=NEAR_TARGET_SPEED,
+                  target_door_angle=COVER_PRE_CLOSE_DEG),
     ]
     stage_log.update({
         "B10_01_move_right": "B 덮개 닫기 전 오른쪽 위치로 이동",
@@ -1109,8 +1111,8 @@ def build_close_cover_sequence(
     })
 
     if center_reference_point is not None:
-        retreat_point = start_push + PORT_OUTWARD_NORMAL_UNIT * DOOR_FULL_CLOSE_RETREAT_DISTANCE
-        center_align_point = p_center(COVER_START_DEG) + PORT_OUTWARD_NORMAL_UNIT * DOOR_FULL_CLOSE_RETREAT_DISTANCE
+        retreat_point = pre_close_push + PORT_OUTWARD_NORMAL_UNIT * DOOR_FULL_CLOSE_RETREAT_DISTANCE
+        center_align_point = p_center(COVER_PRE_CLOSE_DEG) + PORT_OUTWARD_NORMAL_UNIT * DOOR_FULL_CLOSE_RETREAT_DISTANCE
         full_close_point = p_center(COVER_FULL_CLOSE_DEG)
         stages += [
             FuelStage("B10_05_retreat_for_press", retreat_point, tolerance=0.06, speed=RETREAT_TARGET_SPEED),
