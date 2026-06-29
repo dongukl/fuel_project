@@ -31,7 +31,7 @@ from std_msgs.msg import Bool, String, Float64  # 참/거짓, 문자열, 실수 
 
 import numpy as np      # 벡터/행렬 연산 (3D 좌표 계산에 필수)
 import omni.usd         # 현재 열려있는 USD Stage(3D 씬)에 접근하기 위한 Isaac Sim API
-from pxr import Usd, UsdGeom, UsdPhysics, Gf  # USD(3D 씬 포맷)와 PhysX(물리엔진) 관련 저수준 라이브러리
+from pxr import Usd, UsdGeom, UsdPhysics, Gf, Sdf  # USD(3D 씬 포맷)와 PhysX(물리엔진) 관련 저수준 라이브러리
 
 from isaacsim.core.api import World                      # 시뮬레이션 전체를 관리하는 객체(물리 스텝, reset 등)
 from isaacsim.core.api.objects import VisualCuboid        # 디버깅용으로 화면에 표시할 작은 박스 마커
@@ -172,6 +172,37 @@ ALLEGRO_POSES = {
     },
 
 }
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  Held cap cylinder visual 설정                               ║
+# ╚══════════════════════════════════════════════════════════════╝
+USE_HELD_CAP_PROXY = True
+
+HELD_CAP_PRIM_NAME = "held_fuel_cap_cylinder"
+HELD_CAP_ANCHOR_PATH = "/World/held_fuel_cap_anchor"
+HELD_CAP_CYLINDER_PATH = "/World/held_fuel_cap_anchor/held_fuel_cap_cylinder"
+
+# fuel_cap이 0.1, 0.1, 0.05라면 cylinder는 radius=0.05, height=0.05
+HELD_CAP_RADIUS = 0.05
+HELD_CAP_HEIGHT = 0.05
+
+# grasp center 기준 미세 보정.
+# 일단 0으로 시작하고 화면에서 손가락 사이보다 살짝 어긋나면 조정.
+HELD_CAP_GRASP_OFFSET = np.array([0.0, 0.0, 0.0], dtype=float)
+
+# fallback용. middle/thumb tip을 못 찾으면 link_6 기준으로 이만큼 이동.
+HELD_CAP_LINK6_FALLBACK_OFFSET = np.array([0.0, -0.04, -0.04], dtype=float)
+
+HELD_CAP_COLOR = np.array([0.0, 0.0, 0.0], dtype=float)
+
+# held cap cylinder 기울기 설정
+HELD_CAP_TILT_ENABLE = True
+
+# 주유구/캡이 붙어있는 면의 기울기와 맞춤
+HELD_CAP_TILT_DEG = 105.0  # 현재 105도
+
+# 처음에는 X축 기준 회전부터 테스트.
+# 방향이 이상하면 "Y" 또는 "Z"로 바꿔보면 됨.
+HELD_CAP_TILT_AXIS = "X"
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  B. 로봇 A/B 배치                                               ║
@@ -183,7 +214,7 @@ ROBOT_A_BASE_EULER_DEG = np.array([90.0, 0.0, 0.0], dtype=float)  # A 로봇 받
 ROBOT_A_BASE_ORIENTATION = euler_angles_to_quat(np.deg2rad(ROBOT_A_BASE_EULER_DEG))  # 위 회전을 쿼터니언으로
 
 ROBOT_B_PRIM_PATH    = "/World/m0609_B"
-ROBOT_B_BASE_WORLD   = np.array([0.0, 0.0, 1.0], dtype=float)
+ROBOT_B_BASE_WORLD   = np.array([0.0, -0.07, 1.0], dtype=float)
 ROBOT_B_BASE_EULER_DEG = np.array([90.0, 0.0, 0.0], dtype=float)
 ROBOT_B_BASE_ORIENTATION = euler_angles_to_quat(np.deg2rad(ROBOT_B_BASE_EULER_DEG))
 
@@ -446,6 +477,36 @@ def _matrix_translate(vec: np.ndarray):
     m.SetTranslate(Gf.Vec3d(float(vec[0]), float(vec[1]), float(vec[2])))
     return m
 
+def make_world_transform_from_position_orientation_scale(
+    position: np.ndarray,
+    orientation: np.ndarray,
+    scale: np.ndarray,
+):
+    """world position + orientation + scale을 포함한 Gf.Matrix4d 생성.
+
+    held_fuel_cap은 기존 fuel_cap의 scale을 유지해야 하므로,
+    단순 translation/rotation만 넣으면 원본보다 커질 수 있다.
+    """
+    position = np.array(position, dtype=float)
+    orientation = np.array(orientation, dtype=float)
+    scale = np.array(scale, dtype=float)
+
+    q = Gf.Quatd(
+        float(orientation[0]),
+        Gf.Vec3d(float(orientation[1]), float(orientation[2]), float(orientation[3])),
+    )
+
+    scale_m = Gf.Matrix4d(1.0)
+    scale_m.SetScale(Gf.Vec3d(float(scale[0]), float(scale[1]), float(scale[2])))
+
+    rot_m = Gf.Matrix4d(1.0)
+    rot_m.SetRotate(Gf.Rotation(q))
+
+    trans_m = Gf.Matrix4d(1.0)
+    trans_m.SetTranslate(Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
+
+    # USD/Gf row-vector convention 기준: scale -> rotate -> translate
+    return scale_m * rot_m * trans_m
 
 def _matrix_rotate_axis(axis: np.ndarray, angle_deg: float):
     """world axis 기준 회전 matrix 생성용 헬퍼."""
@@ -768,6 +829,98 @@ def set_prim_visibility(prim_path: str, visible: bool):
         imageable.MakeInvisible()
         print(f"[HIDDEN] {prim_path} 숨김", flush=True)
 
+def create_held_cap_cylinder_visual(anchor_path: str, cylinder_path: str) -> bool:
+    """손에 든 fuel cap 연출용 cylinder visual을 생성한다.
+
+    원본 fuel_cap을 복제하지 않고, 별도 USD Cylinder를 만든다.
+    움직일 때는 cylinder 자체가 아니라 부모 anchor Xform의 translate만 바꾼다.
+    그래서 scale/parent transform 꼬임과 렉을 줄일 수 있다.
+    """
+    stage = omni.usd.get_context().get_stage()
+
+    # 이전 실행에서 남은 것이 있으면 제거
+    old_anchor = stage.GetPrimAtPath(anchor_path)
+    if old_anchor.IsValid():
+        stage.RemovePrim(Sdf.Path(anchor_path))
+
+    # 부모 anchor Xform 생성
+    anchor = UsdGeom.Xform.Define(stage, anchor_path)
+    anchor_prim = anchor.GetPrim()
+
+    # translate op를 미리 하나 만든다. 이후 매 tick 이 값만 Set한다.
+    anchor.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, 0.0))
+
+    # held cap cylinder 기울기 op.
+    # translate는 매 tick 바꾸고, rotate는 생성 시 한 번만 넣는다.
+    if HELD_CAP_TILT_ENABLE:
+        if HELD_CAP_TILT_AXIS == "X":
+            anchor.AddRotateXOp().Set(float(HELD_CAP_TILT_DEG))
+        elif HELD_CAP_TILT_AXIS == "Y":
+            anchor.AddRotateYOp().Set(float(HELD_CAP_TILT_DEG))
+        elif HELD_CAP_TILT_AXIS == "Z":
+            anchor.AddRotateZOp().Set(float(HELD_CAP_TILT_DEG))
+    # cylinder 생성
+    cyl = UsdGeom.Cylinder.Define(stage, cylinder_path)
+    cyl.CreateRadiusAttr(float(HELD_CAP_RADIUS))
+    cyl.CreateHeightAttr(float(HELD_CAP_HEIGHT))
+    cyl.CreateAxisAttr("Z")
+
+    # 표시 색상 지정
+    gprim = UsdGeom.Gprim(cyl.GetPrim())
+    gprim.CreateDisplayColorAttr([
+        Gf.Vec3f(
+            float(HELD_CAP_COLOR[0]),
+            float(HELD_CAP_COLOR[1]),
+            float(HELD_CAP_COLOR[2]),
+        )
+    ])
+
+    # 처음에는 숨김
+    UsdGeom.Imageable(anchor_prim).MakeInvisible()
+
+    print(
+        f"[HELD_CAP][OK] cylinder visual 생성: "
+        f"anchor={anchor_path}, cylinder={cylinder_path}, "
+        f"radius={HELD_CAP_RADIUS}, height={HELD_CAP_HEIGHT}",
+        flush=True,
+    )
+    return True
+
+def set_xform_translate_only(prim_path: str, position: np.ndarray) -> bool:
+    """Xform prim의 translate op만 갱신한다.
+
+    set_prim_world_matrix()처럼 xform op order를 매번 지우지 않아서 가볍고 안정적이다.
+    held cap cylinder anchor 이동 전용으로 사용한다.
+    """
+    if not prim_path:
+        return False
+
+    stage = omni.usd.get_context().get_stage()
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim.IsValid():
+        return False
+
+    xformable = UsdGeom.Xformable(prim)
+    ops = xformable.GetOrderedXformOps()
+
+    translate_op = None
+    for op in ops:
+        if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+            translate_op = op
+            break
+
+    if translate_op is None:
+        translate_op = xformable.AddTranslateOp()
+
+    position = np.array(position, dtype=float)
+    translate_op.Set(
+        Gf.Vec3d(
+            float(position[0]),
+            float(position[1]),
+            float(position[2]),
+        )
+    )
+    return True
 
 # ============================================================
 # 도어 힌지 geometry: Revolution Joint의 축/피벗을 USD에서 읽어온다
@@ -1574,9 +1727,11 @@ class MultiRobotOilingTask(BaseTask):
         USD 씬에서 직접 읽어온다. 이 위치들이 게이트 판정 기준(reference_center)이자
         로봇이 실제로 움직여야 할 목표 좌표의 출발점이 되므로, 이 함수의 정확도가
         전체 시스템이 제대로 작동하는지의 핵심이다."""
+
         print("\n" + "=" * 60, flush=True)
         print("[5.SCENE] fuel_door / fuel_cap / fuel_port_hole 탐색", flush=True)
         print("=" * 60, flush=True)
+
         self.door_prim_path = find_prim_path_by_name(SCENE_SEARCH_ROOT, FUEL_DOOR_PRIM_NAME)
         self.cap_prim_path = find_prim_path_by_name(SCENE_SEARCH_ROOT, FUEL_CAP_PRIM_NAME)
         self.hole_prim_path = find_prim_path_by_name(SCENE_SEARCH_ROOT, FUEL_PORT_HOLE_PRIM_NAME)
@@ -1631,6 +1786,23 @@ class MultiRobotOilingTask(BaseTask):
                     color=color,
                 )
             )
+        # 손에 들고 다니는 cap 연출용 별도 cylinder visual.
+        # 원본 fuel_cap 복제/이동은 하지 않는다.
+        self.held_cap_anchor_path = HELD_CAP_ANCHOR_PATH
+        self.held_cap_prim_path = HELD_CAP_CYLINDER_PATH
+
+        if USE_HELD_CAP_PROXY:
+            ok = create_held_cap_cylinder_visual(
+                self.held_cap_anchor_path,
+                self.held_cap_prim_path,
+            )
+            if not ok:
+                print("[HELD_CAP][WARN] held cap cylinder 생성 실패", flush=True)
+                self.held_cap_anchor_path = None
+                self.held_cap_prim_path = None
+        else:
+            self.held_cap_anchor_path = None
+            self.held_cap_prim_path = None
 
     def hide_debug_markers(self):
         """fuel_marker_door/cap/hole 디버그 박스 및 제어용 마커 3개를 숨긴다.
@@ -1638,7 +1810,10 @@ class MultiRobotOilingTask(BaseTask):
         for prim_path in self.debug_marker_prim_paths:
             set_prim_visibility(prim_path, False)
         for key in ("door_push", "cap_approach", "fuel_port"):
-            set_prim_visibility(MARKER_PRIM_PATHS[key], False)
+            set_prim_visibility(MARKER_PRIM_PATHS[key], False)        
+        if USE_HELD_CAP_PROXY and getattr(self, "held_cap_anchor_path", None):
+            set_prim_visibility(self.held_cap_anchor_path, False)
+
 
     def _setup_door_drive(self):
         """덮개 힌지의 RevoluteJoint limit/드라이브는 이미 USD 씬에 직접 설정되어 있으므로
@@ -1755,10 +1930,17 @@ class MultiRobotOilingTask(BaseTask):
         다시 캐시한다(door_rest_rotation은 COVER_START_DEG=30도 상태를 기준으로 가정).
         덮개 자동 열기는 이제 코드가 아니라 USD 씬 쪽에 이미 구성되어 있으므로 여기서는
         건드리지 않는다."""
-        self.robot_a.gripper.set_joint_positions(self.robot_a.gripper.joint_opened_positions)
+        if getattr(self.robot_a, "gripper", None) is not None:
+            self.robot_a.gripper.set_joint_positions(self.robot_a.gripper.joint_opened_positions)
         if getattr(self.robot_b, "gripper", None) is not None:
             self.robot_b.gripper.set_joint_positions(self.robot_b.gripper.joint_opened_positions)
         self.door_rest_rotation = get_prim_world_rotation(self.door_prim_path)
+
+        if self.cap_prim_path is not None:
+            set_prim_visibility(self.cap_prim_path, True)
+        if USE_HELD_CAP_PROXY and getattr(self, "held_cap_anchor_path", None):
+            set_prim_visibility(self.held_cap_anchor_path, False)
+
 
 
 # ============================================================
@@ -1967,6 +2149,9 @@ class RobotBRunner:
         self.cover_anim_start_angle = COVER_OPEN_DEG
         self.cover_anim_last_angle = COVER_OPEN_DEG
 
+        self.original_cap_world_matrix = None
+        self.cap_attached_to_hand = False
+
     def on_play_reset(self):
         """시뮬레이션을 Play로 시작할 때마다 호출되어 모든 상태를 깨끗하게 초기화하고,
         곧바로 카메라에 "door(덮개)부터 찾아"라고 명령(mode_switch=door)을 보낸다.
@@ -2016,6 +2201,11 @@ class RobotBRunner:
         self.cap_grasp_align_max_steps = 60
         self.cap_grasp_align_tolerance = 0.015
 
+        self.original_cap_world_matrix = get_prim_world_matrix(self.task.cap_prim_path)
+        self.cap_attached_to_hand = False
+        set_prim_visibility(self.task.cap_prim_path, True)
+
+
         if USE_B_ALLEGRO_WRIST:
             print(f"[B][ALLEGRO] wrist={self.wrist_pitch_name} index={self.wrist_pitch_index}, "
                   f"hand_dofs={len(self.hand_joint_indices)}", flush=True)
@@ -2030,6 +2220,7 @@ class RobotBRunner:
                   f"'{self.robot.dof_names[self.joint6_index]}'를 가리킴! rotate/screw 대상이 잘못됐을 수 있음")
         self._a_done_count_at_reset = self.ros_bridge.robot_a_done_count
         set_prim_visibility(self.task.cap_prim_path, True)  # 이전 판에서 숨겨둔 마개가 있을 수 있어 리셋 시 항상 보이게 정리
+
         self.ros_bridge.publish_mode_switch("door")
         print("[B] 덮개 자동 열림 시작, 문이 열리는 동안 대기합니다 (mode=door)", flush=True)
 
@@ -2315,6 +2506,75 @@ class RobotBRunner:
         target = GRIPPER_CLOSE if closed else GRIPPER_OPEN
         self.robot.gripper.set_joint_positions(np.array(target, dtype=float))
 
+
+    def _show_held_cap_proxy(self, visible: bool):
+        """손에 든 cap cylinder visual 표시/숨김."""
+        if not USE_HELD_CAP_PROXY:
+            return
+
+        anchor_path = getattr(self.task, "held_cap_anchor_path", None)
+        if not anchor_path:
+            return
+
+        set_prim_visibility(anchor_path, bool(visible))
+
+    def _get_held_cap_target_position(self):
+        """held cap cylinder가 따라갈 위치를 계산한다.
+
+        1순위: Allegro middle/thumb 사이 grasp center
+        2순위: link_6 fallback
+        """
+        grasp_center = self._get_middle_thumb_grasp_center_world()
+        if grasp_center is not None:
+            return grasp_center + HELD_CAP_GRASP_OFFSET
+
+        ee_pos, _ = self.robot.end_effector.get_world_pose()
+        return np.array(ee_pos, dtype=float) + HELD_CAP_LINK6_FALLBACK_OFFSET
+
+    def _sync_held_cap_to_hand(self):
+        """held cap cylinder visual을 Allegro 손가락 grasp center로 이동시킨다.
+
+        cylinder 자체의 transform을 지우지 않고,
+        부모 anchor의 translate op만 갱신한다.
+        """
+        if not USE_HELD_CAP_PROXY:
+            return
+
+        anchor_path = getattr(self.task, "held_cap_anchor_path", None)
+        if not anchor_path:
+            return
+
+        target_pos = self._get_held_cap_target_position()
+        ok = set_xform_translate_only(anchor_path, target_pos)
+
+        # 너무 많은 로그는 렉 유발 가능성이 있으니, 필요하면 처음 5번만 찍는 식으로 제한한다.
+        if not ok:
+            print(f"[HELD_CAP][WARN] anchor 이동 실패: {anchor_path}", flush=True)
+
+    def _cap_detach_visual_on(self):
+        """원본 cap은 숨기고, 손에 든 cylinder cap을 표시한다."""
+        print("[HELD_CAP][DETACH] 원본 cap 숨김 + 손 cap cylinder 표시", flush=True)
+
+        if self.task.cap_prim_path is not None:
+            set_prim_visibility(self.task.cap_prim_path, False)
+
+        if USE_HELD_CAP_PROXY and getattr(self.task, "held_cap_anchor_path", None):
+            self._sync_held_cap_to_hand()
+            self._show_held_cap_proxy(True)
+        else:
+            print("[HELD_CAP][DETACH][WARN] held cap cylinder 없음", flush=True)
+
+    def _cap_restore_visual_on(self):
+        """손에 든 cylinder cap은 숨기고, 원본 cap을 다시 표시한다."""
+        print("[HELD_CAP][RESTORE] 손 cap cylinder 숨김 + 원본 cap 표시", flush=True)
+
+        if USE_HELD_CAP_PROXY:
+            self._show_held_cap_proxy(False)
+
+        if self.task.cap_prim_path is not None:
+            set_prim_visibility(self.task.cap_prim_path, True)
+
+
     def _drive_sequence(self, ee_pos, extra_condition_ok=True):
         """현재 self.sequence(WaypointSequence)를 한 스텝 진행. 완료 여부를 반환.
         RobotARunner의 RUN_SEQUENCE 본문과 같은 패턴이라 여러 run_state에서 재사용한다."""
@@ -2449,8 +2709,28 @@ class RobotBRunner:
         """매 시뮬레이션 스텝마다 호출. run_state(와 필요하면 sub_phase)에 따라 분기해서 한 스텝 진행."""
         if self.task_done:
             return
-        # ee_pos, _ = self.robot.end_effector.get_world_pose()
         ee_pos, ee_ori = self.robot.end_effector.get_world_pose()
+        # 원본 fuel_cap을 손에 붙인 상태라면 매 tick마다 손 근처로 이동시킨다.
+
+        # cap을 손에 들고 있는 동안 held cap cylinder visual을 Allegro grasp center에 붙여둔다.
+        if USE_HELD_CAP_PROXY:
+            holding_cap = self.run_state in {
+                "RETURN_HOME_WITH_CAP",
+                "WAIT_ROBOT_A",
+            }
+
+            if self.run_state == "GRIP_UNSCREW" and self.sub_phase == "extract":
+                holding_cap = True
+
+            if self.run_state == "RESTORE_CAP" and self.sub_phase in {
+                "insert",
+                "screw",
+            }:
+                holding_cap = True
+
+            if holding_cap:
+                self._sync_held_cap_to_hand()
+
 
         # ---------------- B-3: WAIT_DOOR_OPEN ----------------
         # 덮개가 USD 자동 열기 velocity 드라이브로 다 열리기 전에 마개 쪽으로 움직이면 아직
@@ -2596,36 +2876,16 @@ class RobotBRunner:
                 self._rotate_robot_joint6_only(target_joint6)
                 self.joint6_accumulated += UNSCREW_ANGLE_STEP_RAD
                 if abs(self.joint6_accumulated) >= abs(UNSCREW_TOTAL_ANGLE_RAD):
+                    # 원본 cap은 숨기고, 복제한 held cap을 손 근처에 표시
+                    self._cap_detach_visual_on()
 
-            # if self.sub_phase == "rotate":
-            #     self._hold_gripper(closed=True)
-
-            #     next_angle = self.joint6_accumulated + UNSCREW_ANGLE_STEP_RAD
-            #     applied = self._apply_cap_center_roll_step(next_angle)
-
-                # if not applied:
-                #     # cap 중심 roll 기준 캡처가 실패하면 기존 joint_6 단독 회전으로 fallback
-                #     current_joints = self.robot.get_joint_positions()
-                #     target_joint6 = current_joints[self.joint6_index] + UNSCREW_ANGLE_STEP_RAD
-                #     self._rotate_robot_joint6_only(target_joint6)
-
-                # self.joint6_accumulated = next_angle
-
-                # if abs(self.joint6_accumulated) >= abs(UNSCREW_TOTAL_ANGLE_RAD):
-                    # 회전이 끝난 뒤부터 cap을 숨겨서 extract/복귀는 기존 흐름 유지
-                    set_prim_visibility(self.task.cap_prim_path, False)
-                    # frozen_joint_positions로 자세를 고정하는 방식이 extract에서 제대로 안 먹혀서
-                    # RMPFlow가 끼어들 때 팔이 아래로 처지는 문제가 있었다. 이제 extract는
-                    # WaypointSequence/_drive_sequence를 전혀 쓰지 않고, "지금 EE 위치에서
-                    # 바깥쪽으로 0.20m"라는 상대 목표를 고정 스텝 수(EXTRACT_TOTAL_STEPS)에 걸쳐
-                    # 직접 선형보간해서 매 스텝 RMPFlow에 넘긴다.
                     self.frozen_joint_positions = self.robot.get_joint_positions().copy()
                     self.extract_start_ee = ee_pos.copy()
-                    self.extract_target_ee = ee_pos + PORT_OUTWARD_NORMAL_UNIT * 0.15
+                    self.extract_target_ee = ee_pos + PORT_OUTWARD_NORMAL_UNIT * 0.20
                     self.extract_step = 0
                     self.sub_phase = "extract"
                     print(f"\n[B] 마개 풀기 완료({abs(np.degrees(self.joint6_accumulated)):.0f}도) -> "
-                          f"마개를 빼내는 중\n")
+                        f"마개를 손에 든 상태로 빼내는 중\n", flush=True)
                 return
 
             if self.sub_phase == "extract":
@@ -2737,7 +2997,7 @@ class RobotBRunner:
 
             #     if abs(next_angle) >= abs(UNSCREW_TOTAL_ANGLE_RAD):
                     # 마개가 다시 끼워졌으니 숨겨뒀던 마개를 다시 보이게 해서 "복원됐다"는 걸 표현한다.
-                    set_prim_visibility(self.task.cap_prim_path, True)
+                    self._cap_restore_visual_on()
                     self.gripper_hold_count = 0
                     self.sub_phase = "open_grip"
                     print(f"\n[B] 마개 조이기 완료({abs(np.degrees(self.screw_step_count * UNSCREW_ANGLE_STEP_RAD)):.0f}도) "
@@ -2745,6 +3005,7 @@ class RobotBRunner:
                 return
 
             if self.sub_phase == "open_grip":
+                # self._cap_restore_visual_on()
                 self._hold_gripper(closed=False)
                 self.gripper_hold_count += 1
                 if self.gripper_hold_count >= GRIPPER_ACTION_HOLD_STEPS:
