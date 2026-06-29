@@ -1,4 +1,0 @@
-[console_scripts]
-aruco_marker_detector = fuel_port_perception.aruco_marker_detector:main
-multi_detector = fuel_port_perception.multi_color_detector:main
-
