@@ -25,7 +25,7 @@ aruco_marker_detector_node:
     
     marker_to_door_xyz: [0.227924, 0.259677, -0.028225]
     marker_to_cap_xyz:  [0.230000, 0.240000, -0.051500]
-    marker_to_hole_xyz: [0.230000, 0.290000, -0.051500]
+    marker_to_hole_xyz: [0.230000, 0.240000, -0.051500]
 
     required_stable_frames: 3
     stable_buffer_size: 8
